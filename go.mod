@@ -12,7 +12,7 @@ require github.com/nicolasmmb/M5Unit-Encoder-Go v0.1.2
 require github.com/nicolasmmb/M5Unit-GPS-Go v0.3.1
 
 require (
-	github.com/nicolasmmb/M5Unit-Joystick2-Go v0.2.0 // indirect
+	github.com/nicolasmmb/M5Unit-Joystick2-Go v0.2.1 // indirect
 	github.com/nicolasmmb/M5Unit-ToF90-Go v0.3.0 // indirect
 )
 

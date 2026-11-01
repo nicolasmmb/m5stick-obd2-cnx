@@ -31,6 +31,8 @@ github.com/nicolasmmb/M5Unit-Joystick2-Go v0.1.1 h1:nCHwy5x1b55BmES0r1TBLWkMhhle
 github.com/nicolasmmb/M5Unit-Joystick2-Go v0.1.1/go.mod h1:4QLmcVZW2MTERTFbNOJ0zhB2t0UBtpETnQB0G/fK50g=
 github.com/nicolasmmb/M5Unit-Joystick2-Go v0.2.0 h1:BjgsOG5kydYVgDIf5IrLNtTeu7AtInIjVoRaWb+ExkM=
 github.com/nicolasmmb/M5Unit-Joystick2-Go v0.2.0/go.mod h1:4QLmcVZW2MTERTFbNOJ0zhB2t0UBtpETnQB0G/fK50g=
+github.com/nicolasmmb/M5Unit-Joystick2-Go v0.2.1 h1:vijNAHIRX1Fyvq9tUc9rCh+YxD6bl2nwVnSa0HBXJUc=
+github.com/nicolasmmb/M5Unit-Joystick2-Go v0.2.1/go.mod h1:4QLmcVZW2MTERTFbNOJ0zhB2t0UBtpETnQB0G/fK50g=
 github.com/nicolasmmb/M5Unit-ToF90-Go v0.1.0 h1:bWmKNp4QoPIaewykufu+Cj82G3zzwS6cwLNtvbWFyEA=
 github.com/nicolasmmb/M5Unit-ToF90-Go v0.1.0/go.mod h1:KC+HK4fAEqvf0qkSEALejVwvpJqvfBrPPvUHj4jmQIk=
 github.com/nicolasmmb/M5Unit-ToF90-Go v0.1.1 h1:x9QdM0QtTZeAxEzSWWDmPGbAxM6TjFl1S/T9Jx30mwo=

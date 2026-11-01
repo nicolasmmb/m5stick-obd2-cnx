@@ -27,6 +27,7 @@ const (
 
 	pageVector = iota
 	pageRaw
+	pageDeadzone
 	pageInfo
 	pageCount
 )
@@ -48,6 +49,22 @@ var presets = [...]preset{
 }
 
 var brightnessLevels = [...]uint8{25, 50, 100}
+
+const deadzoneStep = 128 // position units per press (3.1%)
+
+var (
+	dzValue            uint16 // draft, applied to both axes
+	appliedX, appliedY uint16
+	message            string
+	messageUntil       time.Time
+
+	factoryCal  joystick2.Calibration
+	haveFactory bool
+
+	pressStart   time.Time
+	pressHandled bool
+	wasPressed   bool
+)
 
 var (
 	black    = color.RGBA{0, 0, 0, 255}
@@ -98,6 +115,9 @@ type uiState struct {
 	color   int
 	bright  int
 	cal     joystick2.Calibration
+	dzValue uint16
+	appX    uint16
+	appY    uint16
 }
 
 type canvas struct {
@@ -171,11 +191,21 @@ func main() {
 	_ = dev.SetBrightness(brightnessLevels[brightIdx])
 	println("joystick2: online fw", fw, "boot", boot, "addr", dev.Address())
 
+	if c, err := dev.Calibration(); err == nil {
+		factoryCal = c
+		haveFactory = true
+		println("joystick2: calibracao de fabrica lida")
+	}
+	refreshApplied()
+	dzValue = appliedX
+	println("joystick2: deadzone atual", appliedX, appliedY)
+
 	lastRate = time.Now()
 	for {
 		handleButtons()
 
 		s, err := dev.Sample()
+		handleStickButton(err == nil && s.Pressed)
 		var st uiState
 		if err != nil {
 			println("joystick2: sample", err.Error())
@@ -194,6 +224,9 @@ func main() {
 				color:   colorIndex,
 				bright:  brightIdx,
 				rate:    currentRate(),
+				dzValue: dzValue,
+				appX:    appliedX,
+				appY:    appliedY,
 			}
 			if time.Since(lastRaw) > 200*time.Millisecond {
 				rawX, rawY, _ = dev.Raw()
@@ -204,8 +237,12 @@ func main() {
 			st.rawX, st.rawY = rawX, rawY
 			st.raw8X, st.raw8Y = raw8X, raw8Y
 			st.pos8X, st.pos8Y = pos8X, pos8Y
-			if page == pageInfo && time.Since(lastCal) > time.Second {
-				st.cal, _ = dev.Calibration()
+			if (page == pageInfo || page == pageDeadzone) && time.Since(lastCal) > time.Second {
+				refreshApplied()
+				if c, err := dev.Calibration(); err == nil {
+					st.cal = c
+				}
+				st.appX, st.appY = appliedX, appliedY
 				lastCal = time.Now()
 			}
 		}
@@ -215,7 +252,8 @@ func main() {
 			println("joystick2", "x", int(st.x), "y", int(st.y),
 				"pressed", st.pressed, "raw", int(st.rawX), int(st.rawY),
 				"rate", st.rate, "mode", presets[colorIndex].name,
-				"bright", brightnessLevels[brightIdx], "addr", fmt.Sprintf("0x%02X", st.addr))
+				"bright", brightnessLevels[brightIdx], "addr", fmt.Sprintf("0x%02X", st.addr),
+				"dz", int(dzValue), "applied", int(appliedX), int(appliedY))
 			lastLog = time.Now()
 		}
 		time.Sleep(20 * time.Millisecond)
@@ -257,18 +295,41 @@ func handleButtons() {
 	now := time.Now()
 	if atomic.SwapUint32(&btnA, 0) > 0 && now.Sub(lastA) > 250*time.Millisecond {
 		lastA = now
-		colorIndex = (colorIndex + 1) % len(presets)
-		_ = dev.SetLED(presets[colorIndex].c)
-		println("joystick2: led", presets[colorIndex].name)
+		if page == pageDeadzone {
+			if dzValue >= deadzoneStep {
+				dzValue -= deadzoneStep
+			} else {
+				dzValue = 0
+			}
+		} else {
+			colorIndex = (colorIndex + 1) % len(presets)
+			_ = dev.SetLED(presets[colorIndex].c)
+			println("joystick2: led", presets[colorIndex].name)
+		}
 	}
 	if atomic.SwapUint32(&btnB, 0) > 0 && now.Sub(lastB) > 250*time.Millisecond {
 		lastB = now
-		brightIdx = (brightIdx + 1) % len(brightnessLevels)
-		_ = dev.SetBrightness(brightnessLevels[brightIdx])
-		println("joystick2: brightness", brightnessLevels[brightIdx])
+		if page == pageDeadzone {
+			if dzValue <= 4096-deadzoneStep {
+				dzValue += deadzoneStep
+			} else {
+				dzValue = 4096
+			}
+		} else {
+			brightIdx = (brightIdx + 1) % len(brightnessLevels)
+			_ = dev.SetBrightness(brightnessLevels[brightIdx])
+			println("joystick2: brightness", brightnessLevels[brightIdx])
+		}
 	}
 	if atomic.SwapUint32(&btnC, 0) > 0 && now.Sub(lastC) > 250*time.Millisecond {
 		lastC = now
+		if page == pageDeadzone {
+			if dzValue != appliedX || dzValue != appliedY {
+				applyDeadzone(dzValue)
+				page = pageVector
+				return
+			}
+		}
 		page = (page + 1) % pageCount
 	}
 }
@@ -297,12 +358,18 @@ func render(st uiState) {
 		drawVector(st)
 	case pageRaw:
 		drawRaw(st)
+	case pageDeadzone:
+		drawDeadzone(st)
 	case pageInfo:
 		drawInfo(st)
 	}
 
 	fb.fillRect(0, 120, screenW, 1, darkGray)
-	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 133, "A: cor  B: brilho  C: pagina", gray)
+	hint := "A: cor  B: brilho  C: pagina"
+	if st.page == pageDeadzone {
+		hint = "C: salvar/proxima  Z2s: fabrica"
+	}
+	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 133, hint, gray)
 	fb.flush()
 }
 
@@ -310,6 +377,16 @@ func drawVector(st uiState) {
 	const cx, cy, radius = 62, 72, 40
 	fb.fillRect(cx-radius, cy, radius*2+1, 1, darkGray)
 	fb.fillRect(cx, cy-radius, 1, radius*2+1, darkGray)
+
+	// Applied deadzone box.
+	if st.appX > 0 || st.appY > 0 {
+		hx := int16(int32(st.appX) * radius / 4095)
+		hy := int16(int32(st.appY) * radius / 4095)
+		fb.fillRect(cx-hx, cy-hy, 1, hy*2+1, darkGray)
+		fb.fillRect(cx+hx, cy-hy, 1, hy*2+1, darkGray)
+		fb.fillRect(cx-hx, cy-hy, hx*2+1, 1, darkGray)
+		fb.fillRect(cx-hx, cy+hy, hx*2+1, 1, darkGray)
+	}
 	fb.fillRect(cx-2, cy-2, 4, 4, gray)
 
 	px := cx + int16(int32(st.x)*radius/4095)
@@ -331,6 +408,9 @@ func drawVector(st uiState) {
 	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 126, 84, btn, btnCol)
 	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 126, 104,
 		fmt.Sprintf("%d Hz", st.rate), white)
+	if time.Now().Before(messageUntil) {
+		tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 116, message, green)
+	}
 }
 
 func drawRaw(st uiState) {
@@ -348,6 +428,24 @@ func drawRaw(st uiState) {
 		btn = "pressionado"
 	}
 	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 112, "BOTAO "+btn, gray)
+}
+
+func drawDeadzone(st uiState) {
+	pct := float64(st.dzValue) * 100 / 4096
+	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 34, "DEADZONE", gray)
+	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 196, 34, fmt.Sprintf("%.1f%%", pct), white)
+
+	fb.fillRect(20, 44, 200, 10, darkGray)
+	if fill := int16(int32(st.dzValue) * 200 / 4096); fill > 0 {
+		fb.fillRect(20, 44, fill, 10, yellow)
+	}
+
+	tinyfont.WriteLine(&fb, &freemono.Bold18pt7b, 6, 84, fmt.Sprintf("%d", st.dzValue), white)
+	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 126, 72,
+		fmt.Sprintf("ATUAL %d", st.appX), gray)
+	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 100,
+		"A  -128            B  +128", white)
+	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 114, "C  SALVAR  (flash)", yellow)
 }
 
 func drawInfo(st uiState) {
@@ -380,6 +478,80 @@ func drawOffline(err string) {
 	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 74, "verifique o Grove G32/G33", white)
 	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 90, err, gray)
 	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 106, "tentando de novo...", gray)
+	fb.flush()
+}
+
+func deadzoneFromCal(negMax uint16) uint16 {
+	if negMax >= 32768 {
+		return 0
+	}
+	return uint16(uint32(32768-uint16(negMax)) * 4096 / 32768)
+}
+
+func refreshApplied() {
+	c, err := dev.Calibration()
+	if err != nil {
+		println("joystick2: calibrar", err.Error())
+		return
+	}
+	appliedX = deadzoneFromCal(c.XNegMax)
+	appliedY = deadzoneFromCal(c.YNegMax)
+}
+
+func applyDeadzone(v uint16) {
+	drawWriting("GRAVANDO...")
+	if err := dev.SetDeadzonePosition(v, v); err != nil {
+		println("joystick2: deadzone", err.Error())
+		return
+	}
+	time.Sleep(50 * time.Millisecond)
+	refreshApplied()
+	message = "DEADZONE SALVA"
+	messageUntil = time.Now().Add(2 * time.Second)
+	println("joystick2: deadzone aplicado", v)
+}
+
+func restoreFactory() {
+	if !haveFactory {
+		println("joystick2: sem backup da calibracao")
+		return
+	}
+	drawWriting("RESTAURANDO...")
+	if err := dev.SetCalibration(factoryCal); err != nil {
+		println("joystick2: restore", err.Error())
+		return
+	}
+	time.Sleep(50 * time.Millisecond)
+	refreshApplied()
+	dzValue = appliedX
+	message = "FABRICA RESTAURADA"
+	messageUntil = time.Now().Add(2 * time.Second)
+	println("joystick2: calibracao de fabrica restaurada")
+}
+
+func handleStickButton(pressed bool) {
+	now := time.Now()
+	if pressed && !wasPressed {
+		pressStart = now
+		pressHandled = false
+	}
+	if pressed && page == pageDeadzone && !pressHandled && !pressStart.IsZero() &&
+		now.Sub(pressStart) > 2*time.Second {
+		pressHandled = true
+		restoreFactory()
+	}
+	if !pressed {
+		pressHandled = false
+	}
+	wasPressed = pressed
+}
+
+func drawWriting(msg string) {
+	fb.clear()
+	tinyfont.WriteLine(&fb, &freemono.Bold9pt7b, 4, 14, "JOYSTICK2", cyan)
+	fb.fillRect(0, 18, screenW, 1, darkGray)
+	tinyfont.WriteLine(&fb, &freemono.Bold9pt7b, 4, 56, msg, yellow)
+	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 78, "gravando na flash do STM32", white)
 	fb.flush()
 }
 
