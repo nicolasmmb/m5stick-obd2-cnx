@@ -54,6 +54,7 @@ poc/finger2/      # tela do Unit Fingerprint2 (UART Grove)
 poc/encoder/      # tela de teste do Unit Encoder U135 (I2C Grove)
 poc/gps/          # tela de teste do Unit GPS v1.1 (UART Grove)
 poc/tof/          # tela de teste do Unit Mini ToF-90 (I2C Grove)
+poc/joystick2/    # tela de teste do Unit Joystick2 Hall (I2C Grove)
 lib/spm1423/      # driver PDM do SPM1423 usando I2S0 + DMA
 docs/             # ideias de sensores, apps e projetos
 ```
@@ -73,6 +74,7 @@ make finger      # flash + monitor (tela do Fingerprint2)
 make encoder     # flash + monitor (tela do Unit Encoder U135)
 make gps         # flash + monitor (tela do Unit GPS v1.1)
 make tof         # flash + monitor (tela do Unit Mini ToF-90)
+make joystick2   # flash + monitor (tela do Unit Joystick2)
 make monitor     # monitor serial apenas
 ```
 
@@ -551,6 +553,26 @@ mesmos registradores do VL53L0X):
   leituras inválidas a ~1,24 m; o status **11 (MERGED OK)** é uma leitura
   válida. Trocar o budget em modo contínuo exige **parar e reiniciar** o
   stream (o sensor trava a configuração no start) — o botão C já faz isso.
+
+## Unit Joystick2 (Hall)
+
+Tela de teste do **Unit Joystick2** (SKU U024-V2, joystick Hall + STM32G030):
+
+- Grove **I2C1: SDA=G32, SCL=G33**, endereço **0x63**, 400 kHz. Um unit por
+  vez no Grove (compartilhado com Encoder/GPS/Fingerprint2/ToF).
+- Driver puro Go separado:
+  [M5Unit-Joystick2-Go](https://github.com/nicolasmmb/M5Unit-Joystick2-Go)
+  v0.1.1 — **2 transações I2C por amostra**, 0 alocações.
+- Eixos: ADC 16 bits (0–65535), posição ±4095, ADC/posição 8 bits e botão Z.
+- Todas as páginas (**C** avança): VETOR (mira + X/Y + botão), BRUTO (ADC 16/8
+  e posição 8 bits) e INFO (fw, bootloader, endereço, LED, calibração).
+- **A** cicla a cor do LED (8 presets), **B** o brilho (25/50/100%).
+- **I2C a 100 kHz**: a 400 kHz o slave do STM32 dá timeout em polling contínuo;
+  a 100 kHz rodou a 35–43 Hz sem erros.
+- Validado no hardware: X/Y chegam a **±4095**, botão Z registra, ADC de 16 bits
+  cobre a faixa e os presets de cor/brilho do LED funcionam.
+- A calibração/deadzone é **somente leitura** no POC (escritas vão para a
+  flash do STM32; a lib expõe `SetCalibration`/`SetDeadzone*`).
 
 ## Zed (autocomplete e diagnósticos)
 
