@@ -5,6 +5,8 @@ package finger2
 import (
 	"fmt"
 	"time"
+
+	"m5stick-obd2-cnx/lib/finger2/internal/wire"
 )
 
 // AutoEnroll stages reported in Param1.
@@ -90,7 +92,7 @@ func (d *Device) NextEnrollEvent(timeout time.Duration) (EnrollProgress, error) 
 		if d.skipWakeup(pkt) {
 			continue
 		}
-		if pkt[6] != pidAck {
+		if pkt[6] != wire.PIDAck {
 			continue
 		}
 		confirm, data := ackData(pkt)
@@ -152,7 +154,7 @@ func (d *Device) NextIdentifyEvent(timeout time.Duration) (IdentifyProgress, err
 		if d.skipWakeup(pkt) {
 			continue
 		}
-		if pkt[6] != pidAck {
+		if pkt[6] != wire.PIDAck {
 			continue
 		}
 		confirm, data := ackData(pkt)

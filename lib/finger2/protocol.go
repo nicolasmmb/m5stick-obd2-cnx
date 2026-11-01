@@ -6,21 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"m5stick-obd2-cnx/lib/finger2/internal/wire"
 )
 
-// Packet framing.
-const (
-	header0 = 0xEF
-	header1 = 0x01
-
-	pidCommand = 0x01
-	pidData    = 0x02
-	pidAck     = 0x07
-	pidEndData = 0x08
-
-	// DefaultAddress is the broadcast address used by the module out of reset.
-	DefaultAddress = 0xFFFFFFFF
-)
+// DefaultAddress is the broadcast address used by the module out of reset.
+const DefaultAddress = 0xFFFFFFFF
 
 // Module commands.
 const (
@@ -124,8 +115,8 @@ const (
 
 	// imageBytes is the 4-bit-per-pixel image payload size.
 	imageBytes = ImageWidth * ImageHeight / 2
-	// templateBytes is the size of one stored fingerprint template.
-	templateBytes = 7262
+	// TemplateBytes is the size of one stored fingerprint template.
+	TemplateBytes = 7262
 	// infBytes is the size of the INF page.
 	infBytes = 512
 
@@ -211,15 +202,6 @@ func codeName(c uint8) string {
 	return fmt.Sprintf("confirm 0x%02X", c)
 }
 
-// checksum returns the 16-bit sum used by the module.
-func checksum(b []byte) uint16 {
-	var sum uint16
-	for _, v := range b {
-		sum += uint16(v)
-	}
-	return sum
-}
-
 // flush discards any pending bytes from the UART.
 func (d *Device) flush() {
 	d.rxBuf = nil
@@ -230,22 +212,7 @@ func (d *Device) flush() {
 
 // send serializes and writes a command packet.
 func (d *Device) send(cmd byte, payload []byte) error {
-	pkt := make([]byte, 12+len(payload))
-	pkt[0] = header0
-	pkt[1] = header1
-	pkt[2] = byte(d.address >> 24)
-	pkt[3] = byte(d.address >> 16)
-	pkt[4] = byte(d.address >> 8)
-	pkt[5] = byte(d.address)
-	pkt[6] = pidCommand
-	length := 3 + len(payload) // command + payload + checksum
-	pkt[7] = byte(length >> 8)
-	pkt[8] = byte(length)
-	pkt[9] = cmd
-	copy(pkt[10:], payload)
-	sum := checksum(pkt[6 : len(pkt)-2])
-	pkt[len(pkt)-2] = byte(sum >> 8)
-	pkt[len(pkt)-1] = byte(sum)
+	pkt := wire.BuildCommand(d.address, cmd, payload)
 	_, err := d.uart.Write(pkt)
 	return err
 }
@@ -271,7 +238,7 @@ func (d *Device) readPacket(timeout time.Duration) ([]byte, error) {
 			buf = append(buf, b)
 
 			// Discard bytes until the two-byte start code.
-			for len(buf) >= 2 && !(buf[0] == header0 && buf[1] == header1) {
+			for len(buf) >= 2 && !(buf[0] == wire.Header0 && buf[1] == wire.Header1) {
 				buf = buf[1:]
 			}
 			if len(buf) < 9 {
@@ -288,7 +255,7 @@ func (d *Device) readPacket(timeout time.Duration) ([]byte, error) {
 				continue
 			}
 
-			sum := checksum(buf[6 : total-2])
+			sum := wire.Checksum(buf[6 : total-2])
 			if buf[total-2] == byte(sum>>8) && buf[total-1] == byte(sum) {
 				d.rxBuf = append(d.rxBuf[:0], buf[total:]...)
 				d.rxScratch = buf[:0]
@@ -318,7 +285,7 @@ func (d *Device) readAck(timeout time.Duration) ([]byte, error) {
 		if d.skipWakeup(pkt) {
 			continue
 		}
-		if pkt[6] == pidAck {
+		if pkt[6] == wire.PIDAck {
 			return pkt, nil
 		}
 	}
@@ -329,7 +296,7 @@ func ackData(pkt []byte) (confirm byte, data []byte) {
 	if len(pkt) < 12 {
 		return ConfirmPacketError, nil
 	}
-	return pkt[9], pkt[10 : len(pkt)-2]
+	return wire.AckData(pkt)
 }
 
 // transceive sends a command and returns the ACK data and confirmation.
@@ -375,7 +342,7 @@ func (d *Device) readDataInto(dst []byte, timeout time.Duration) (int, error) {
 		if d.skipWakeup(pkt) {
 			continue
 		}
-		if pkt[6] != pidData && pkt[6] != pidEndData {
+		if pkt[6] != wire.PIDData && pkt[6] != wire.PIDEndData {
 			continue
 		}
 
@@ -383,7 +350,7 @@ func (d *Device) readDataInto(dst []byte, timeout time.Duration) (int, error) {
 		if end := len(pkt) - 2; end > 9 {
 			written += copy(dst[written:], pkt[9:end])
 		}
-		if pkt[6] == pidEndData {
+		if pkt[6] == wire.PIDEndData {
 			return written, nil
 		}
 	}

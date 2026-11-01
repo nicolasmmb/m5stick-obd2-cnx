@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"machine"
+
+	"m5stick-obd2-cnx/lib/finger2/internal/wire"
 )
 
 // SystemParams mirrors the 16-byte system parameter block (0x0F).
@@ -87,23 +89,9 @@ func (d *Device) SetAddress(a uint32) { d.address = a }
 // while it sleeps. Wakeup packets are also skipped inside command reads.
 func (d *Device) SetWakeupHandler(h func([]byte)) { d.wakeup = h }
 
-var wakeupPattern = [12]byte{0xEF, 0x01, 0xFF, 0xFF, 0xFF, 0xFF, 0x07, 0x00, 0x03, 0xFF, 0x01, 0x09}
-
-func isWakeupPacket(pkt []byte) bool {
-	if len(pkt) != len(wakeupPattern) {
-		return false
-	}
-	for i := range wakeupPattern {
-		if pkt[i] != wakeupPattern[i] {
-			return false
-		}
-	}
-	return true
-}
-
 // skipWakeup consumes wakeup packets and fires the handler.
 func (d *Device) skipWakeup(pkt []byte) bool {
-	if !isWakeupPacket(pkt) {
+	if !wire.IsWakeup(pkt) {
 		return false
 	}
 	if d.wakeup != nil {
