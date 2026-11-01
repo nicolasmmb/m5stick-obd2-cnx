@@ -1,4 +1,4 @@
-// POC: M5Stack Unit NFC (U216, ST25R3916) NFC-A probe.
+// POC: M5Stack Unit NFC (U216, ST25R3916) protocol probe.
 //
 // Grove I2C1: SDA=G32, SCL=G33, address 0x50. The Grove port is shared with
 // the other units, so only one can be connected at a time.
@@ -364,7 +364,7 @@ func drawF(st uiState) {
 	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 72,
 		fmt.Sprintf("PMm % X", st.pmm[:]), white)
 	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 92,
-		fmt.Sprintf("Suica/Pasmo/FeliCa  %d us", st.detectUS), white)
+		fmt.Sprintf("FeliCa  %d us", st.detectUS), white)
 }
 
 func drawB(st uiState) {

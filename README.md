@@ -596,7 +596,7 @@ Probe NFC-A do **Unit NFC** (SKU U216, ST25R3916):
 - Grove **I2C1: SDA=G32, SCL=G33**, endereço **0x50**, 400 kHz. Um unit por
   vez no Grove.
 - Driver puro Go separado:
-  [M5Unit-NFC-Go](https://github.com/nicolasmmb/M5Unit-NFC-Go) v0.3.0 —
+  [M5Unit-NFC-Go](https://github.com/nicolasmmb/M5Unit-NFC-Go) v0.3.1 —
   init completo do ST25R3916, ativação NFC-A (REQA/WUPA, anticolisão, SELECT),
   **0 alocações** por detecção.
 - **Uma tela por protocolo** (**C** cicla): **NFC-A**, **NFC-F**, **NFC-B**,
@@ -607,7 +607,7 @@ Probe NFC-A do **Unit NFC** (SKU U216, ST25R3916):
 - NFC-A mostra UID/tipo/ATQA/SAK/memória; NFC-F mostra IDm/PMm; NFC-B mostra
   PUPI/APPL/PROTO.
 - Fase 1: **NFC-A + NFC-F + NFC-B**. Validado no hardware: cartões ISO14443-4
-  (UID de 4 e 7 bytes, SAK 0x20) e **Suica/Pasmo (FeliCa)** — IDm/PMm lidos em
+  (UID de 4 e 7 bytes, SAK 0x20) e **FeliCa (NFC-F)** — IDm/PMm lidos em
   ~10 ms, 0 erros de I2C. A tela NFC-B está pronta para tags ISO14443-B.
 - NFC-V, leitura/escrita, NDEF e emulação entram nas próximas fases.
 
