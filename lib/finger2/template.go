@@ -131,7 +131,7 @@ func (d *Device) UploadTemplateAuto(size uint16) ([]byte, error) {
 		payload[1] = byte(offset)
 		payload[2] = byte(want >> 8)
 		payload[3] = byte(want)
-		data, confirm, err := d.transceiveAlias(CmdUploadTemplate, payload[:], 10*time.Second)
+		data, confirm, err := d.transceive(CmdUploadTemplate, payload[:], 10*time.Second)
 		if err != nil {
 			return out, err
 		}
@@ -174,7 +174,7 @@ func (d *Device) DownloadTemplateAuto(data []byte) error {
 		payload[3] = byte(n)
 		copy(payload[4:4+n], data[offset:offset+n])
 
-		_, confirm, err := d.transceiveAlias(CmdDownloadTmpl, payload[:4+n], 10*time.Second)
+		_, confirm, err := d.transceive(CmdDownloadTmpl, payload[:4+n], 10*time.Second)
 		if err != nil {
 			return err
 		}

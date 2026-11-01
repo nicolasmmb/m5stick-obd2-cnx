@@ -303,18 +303,11 @@ func ackData(pkt []byte) (confirm byte, data []byte) {
 	return wire.AckData(pkt)
 }
 
-// transceive sends a command and returns a private copy of the ACK data.
+// transceive sends a command and returns the ACK data and confirmation.
+//
+// The returned data aliases the device scratch buffer: it is only valid until
+// the next command. Methods that return data to callers copy it first.
 func (d *Device) transceive(cmd byte, payload []byte, timeout time.Duration) ([]byte, byte, error) {
-	data, confirm, err := d.transceiveAlias(cmd, payload, timeout)
-	if len(data) > 0 {
-		data = append([]byte(nil), data...)
-	}
-	return data, confirm, err
-}
-
-// transceiveAlias is transceive without the copy. The returned data aliases the
-// device scratch buffer and must be consumed before the next command.
-func (d *Device) transceiveAlias(cmd byte, payload []byte, timeout time.Duration) ([]byte, byte, error) {
 	d.flush()
 	if err := d.send(cmd, payload); err != nil {
 		return nil, 0, err
