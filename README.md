@@ -12,8 +12,18 @@ POC para validar TinyGo, Wi-Fi, BLE e o LCD do M5StickC Plus2 antes de integrar 
 | B3 | Tela ST7789 + Wi-Fi + BLE juntos | ✅ 25–36 APs / 12–16 BLE |
 | B4 | Menu interativo de sensores na tela | ✅ IMU, RTC, bateria, botões, buzzer, LED/IR |
 | B5 | Lib SPM1423 PDM (I2S0 + DMA) | ✅ RMS/dBFS; tom de 2,7 kHz detectado |
-| B6 | Espectrograma FFT na tela | ✅ FFT 512 + waterfall 120x50 |
+| B6 | Espectrograma FFT na tela | ✅ FFT 256 + waterfall, fundo preto e pico |
+| B7 | Bola com física do IMU | ✅ 60 fps, dirty rects e 5 presets |
+| B8 | Simulador de areia | ✅ 1.000 / 10.000 grãos, grid 240×84 |
+| B9 | ENV IV no Grove (SHT40 + BMP280) | ✅ temp/umidade/pressão/altitude |
+| B10 | Fingerprint2 (A-K323CP) no Grove | ✅ tela, captura/busca, LED ring |
 | C | OBD2 | ⏸️ bloqueado: adaptador ELM327 Bluetooth Classic |
+
+## Ideias de sensores e apps
+
+Catálogo completo em [docs/ideias-sensores-apps.md](docs/ideias-sensores-apps.md):
+quick wins, apps para o carro, sensores M5Stack, projetos combinados, notas de
+hardware e checklist de sensores.
 
 ## Ambiente
 
@@ -39,7 +49,11 @@ poc/ble-scan/     # scan BLE com nomes (serial)
 poc/display-scan/ # tela: Wi-Fi + BLE, abas e navegação por botões
 poc/sensors/      # menu interativo de sensores na tela
 poc/mic-pdm/      # teste de RMS/dBFS do microfone na serial
+poc/env-iv/       # teste serial do ENV IV (SHT40 + BMP280)
+poc/finger2/      # tela do Unit Fingerprint2 (UART Grove)
+lib/finger2/      # protocolo UART do A-K323CP
 lib/spm1423/      # driver PDM do SPM1423 usando I2S0 + DMA
+docs/             # ideias de sensores, apps e projetos
 ```
 
 ## Comandos
@@ -52,6 +66,8 @@ make ble         # flash + monitor
 make display     # flash + monitor (POC da tela)
 make sensors     # flash + monitor (POC de sensores)
 make mic         # flash + monitor (POC do microfone)
+make env         # flash + monitor (POC do ENV IV)
+make finger      # flash + monitor (tela do Fingerprint2)
 make monitor     # monitor serial apenas
 ```
 
@@ -70,8 +86,10 @@ tinygo flash -target=m5stick-c -port=/dev/cu.usbserial-XXXX \
 | ble-scan | 228 KB | 17,8 KB |
 | wifi-scan | 472 KB | 41,6 KB |
 | display-scan | 581 KB | 52,0 KB |
-| sensors | 142 KB | 31 KB + 65 KB do framebuffer |
+| sensors | 149 KB | 39 KB + 65 KB do framebuffer |
 | mic-pdm | 23 KB | 4,8 KB + 1 KB de DMA |
+| env-iv | 34 KB | 4,7 KB |
+| finger2 | 98 KB | 12,3 KB |
 
 O BLE no ESP32 clássico reserva ainda 64 KB fixos de RAM para o controlador.
 
@@ -103,7 +121,11 @@ Menu interativo de 7 páginas, renderizado em framebuffer (sem piscar):
 | BUZZER | tom de 2700 Hz em G2 |
 | LED / IR | estado do LED vermelho/IR em G19 |
 | MICROFONE | SPM1423 PDM ao vivo: RMS, dBFS e barra de nível |
-| ESPECTRO | FFT 512 pontos, waterfall 0–7,8 kHz e escala de cor dBFS |
+| ENV IV | SHT40 (temp/umidade) + BMP280 (pressão/altitude) no Grove |
+| FINGER2 | tela do Unit Fingerprint2: captura, busca, ID/score e LED ring |
+| ESPECTRO | FFT 256, waterfall 0–7,8 kHz em fundo preto, pico em kHz/dB |
+| BOLA IMU | bola que cai com a gravidade do IMU e quica nas bordas |
+| AREIA | simulador de areia com 1.000 ou 10.000 grãos |
 
 Navegação:
 
@@ -117,10 +139,27 @@ Notas técnicas:
 - O framebuffer RGB565 de 240x135 usa ~65 KB de RAM.
 - O microfone usa a lib `lib/spm1423` (I2S0 + DMA); na página MICROFONE,
   **C** toca um bip de 2,7 kHz para validar o nível.
-- A página ESPECTRO usa FFT de 512 pontos com janela Hann:
-  - 120 colunas (tempo) × 50 linhas (frequência), atualização ~10 Hz.
-  - Eixo de 0 a ~7,8 kHz; a cor vai de azul (fraco) a vermelho (forte).
-  - **C** toca o bip e desenha uma linha vertical em ~2,7 kHz.
+- A página ESPECTRO usa FFT de 256 pontos com janela Hann:
+  - Waterfall de 120 colunas × 50 linhas, atualização ~10 Hz.
+  - dBFS normalizado por 32768 e offset DC removido: silêncio fica **preto**.
+  - Cores: verde → amarelo → vermelho conforme o nível.
+  - Mostra o pico em kHz e dBFS no topo.
+  - **C** toca o bip; aparece uma linha brilhante em ~2,7 kHz.
+- A página BOLA IMU usa a aceleração do MPU6886 como gravidade:
+  - a bola quica nas bordas do campo com restituição configurável.
+  - **C** alterna 5 presets de gravidade, quique e raio.
+  - O mapeamento dos eixos é fixo (sem opções invertidas).
+  - Roda a ~60 fps: só a região da bola (dirty rect) é enviada ao display
+    a cada frame; o fundo/campo/rodapé são desenhados uma vez.
+- A página AREIA usa um autômato em grid 240×84:
+  - **C** alterna entre 1.000 e 10.000 grãos; cada troca reinicia a areia.
+  - Os grãos seguem a gravidade do IMU em 8 direções (incluindo diagonais),
+    com deslizamento quando a diagonal está bloqueada.
+  - O spawn vem de uma faixa central no lado oposto à gravidade (tipo moega).
+  - 3 tons de areia, deslizamento com atrito (ângulo de repouso) e fluxo mais
+    lento em inclinações suaves.
+  - Só o campo de areia é enviado ao display por frame (40 KB), com SPI a 40 MHz.
+  - O grid ocupa ~20 KB de RAM.
 - O buzzer usa PWM (LEDC) em G2, porque o driver bit-banged não é confiável
   com o scheduler do ESP32.
 
@@ -166,6 +205,28 @@ Cuidados:
 - O microfone PDM tem offset DC; use sempre `RMS`/`DBFS` em vez do valor bruto.
 - A taxa é nominal de 15,625 kHz (divisor inteiro). Para 16 kHz exatos seria
   preciso usar divisor fracionário no `CLKM_CONF`.
+
+## ENV IV no Grove
+
+O ENV IV usa **SHT40 (0x44)** e **BMP280 (0x76)** no I2C externo:
+
+- Grove: SDA = G32, SCL = G33, `machine.I2C1`.
+- Página **ENV IV** no `poc/sensors` e POC serial `poc/env-iv`.
+- Mostra temperatura, umidade, pressão e altitude.
+
+## Fingerprint2 no Grove
+
+O Unit Fingerprint2 (A-K323CP) usa UART 115200 8N1 no Grove:
+
+- TX = G32, RX = G33 (`machine.UART1`).
+- O módulo dorme e acorda com **toque no sensor**; a tela mostra “TOQUE NO SENSOR”.
+- `poc/finger2` mostra firmware, capacidade, digitais cadastradas, ID/score e
+  controla o LED ring e o buzzer.
+- Ainda não há cadastro de digitais pela POC; sem template cadastrado a busca
+  retorna “NAO CADASTRADO”.
+
+**Atenção:** ENV IV e Fingerprint2 compartilham o Grove (G32/G33). Use um de
+cada vez; não dá para rodar as duas páginas/POCs juntas.
 
 ## Zed (autocomplete e diagnósticos)
 
