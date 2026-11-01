@@ -2,7 +2,7 @@ PORT ?= /dev/cu.usbserial-5A6C0570831
 TARGET ?= m5stick-c
 TINYGO ?= tinygo
 
-.PHONY: build check hello wifi ble display sensors mic env finger finger-test monitor clean
+.PHONY: build check hello encoder wifi ble display sensors mic env finger finger-test monitor clean
 
 build:
 	$(TINYGO) build -target=$(TARGET) -size short -o /tmp/m5-hello.bin ./poc/hello
@@ -15,10 +15,11 @@ build:
 	$(TINYGO) build -target=$(TARGET) -size short -o /tmp/m5-finger2.bin ./poc/finger2
 	$(TINYGO) build -target=$(TARGET) -size short -o /tmp/m5-finger2-test.bin ./poc/finger2-test
 	$(TINYGO) build -target=$(TARGET) -size short -o /tmp/m5-finger2-bench.bin ./poc/finger2-bench
+	$(TINYGO) build -target=$(TARGET) -size short -o /tmp/m5-encoder.bin ./poc/encoder
 	$(TINYGO) build -target=$(TARGET) -size short -o /tmp/m5-finger2-render-bench.bin ./poc/finger2-render-bench
 
 check:
-	@for f in ./poc/hello/main.go ./poc/wifi-scan/main.go ./poc/ble-scan/main.go ./poc/display-scan/main.go ./poc/sensors/main.go ./poc/mic-pdm/main.go ./poc/env-iv/main.go ./poc/finger2/main.go ./poc/finger2-test/main.go ./poc/finger2-bench/main.go ./poc/finger2-render-bench/main.go ./lib/spm1423/spm1423.go; do \
+	@for f in ./poc/hello/main.go ./poc/wifi-scan/main.go ./poc/ble-scan/main.go ./poc/display-scan/main.go ./poc/sensors/main.go ./poc/mic-pdm/main.go ./poc/env-iv/main.go ./poc/finger2/main.go ./poc/finger2-test/main.go ./poc/finger2-bench/main.go ./poc/finger2-render-bench/main.go ./poc/encoder/main.go ./lib/spm1423/spm1423.go; do \
 		echo "gopls check $$f"; \
 		./scripts/gopls-tinygo.sh check "$$f"; \
 	done
@@ -49,6 +50,9 @@ finger:
 
 finger-test:
 	$(TINYGO) flash -target=$(TARGET) -port=$(PORT) -size short -monitor ./poc/finger2-test
+
+encoder:
+	$(TINYGO) flash -target=$(TARGET) -port=$(PORT) -size short -monitor ./poc/encoder
 
 monitor:
 	$(TINYGO) monitor -port=$(PORT)
