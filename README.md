@@ -420,6 +420,27 @@ Notas:
   (`0xD0`–`0xD6`) existem no protocolo, mas a lib original não os expõe; por isso
   não há referência de comportamento — o teste apenas verifica ida e volta.
 
+### Performance (medido no hardware)
+
+Benchmark em `poc/finger2-bench` com `runtime.ReadMemStats` e `time.Since`:
+
+| Operação | Antes | Depois |
+|---|---|---|
+| `UpImageTo` (8320 B) | 525 mallocs, heap 131 KB | 1 malloc, heap 91 KB |
+| `UpImage` (8320 B) | 526 mallocs, heap 147 KB | 2 mallocs, heap 107 KB |
+| Render 80×208 → 240×135 | 5,69 ms | 3,09 ms (paleta) |
+
+- `UpImageTo`/`ReadINFTo` escrevem em buffer do chamador e `readPacket` usa um
+  scratch persistente: caiu de 525 para 1 malloc por captura.
+- `transceive` copia o payload do ACK para os chamadores não reterem uma visão
+  do scratch (bug encontrado no benchmark: `Init` lia o firmware após reutilizar
+  o buffer).
+- O **upload não acelera**: ~1,81 s por imagem, limitado pelo módulo/UART.
+  Pacotes de 256 B (registrador 6) dão ~1,709 s (−5%), mas mudam a config do
+  módulo; não adotado.
+- A renderização usa paleta de 16 níveis em RGB565 em vez de converter cada
+  pixel.
+
 ### Armadilhas conhecidas
 
 - `modeRead = iota` declarado no mesmo `const` de `screenW`/`screenH` vale **2**,

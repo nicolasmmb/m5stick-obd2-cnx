@@ -252,10 +252,15 @@ func (d *Device) send(cmd byte, payload []byte) error {
 
 // readPacket reads one valid packet, resynchronizing on the header and
 // verifying the checksum. Leftover bytes are kept for the next call.
+//
+// The returned packet aliases the device scratch buffer and is only valid
+// until the next read. Public methods copy or consume it before returning.
 func (d *Device) readPacket(timeout time.Duration) ([]byte, error) {
+	if cap(d.rxScratch) < 1024 {
+		d.rxScratch = make([]byte, 0, 1024)
+	}
+	buf := append(d.rxScratch[:0], d.rxBuf...)
 	deadline := time.Now().Add(timeout)
-	buf := append([]byte(nil), d.rxBuf...)
-	d.rxBuf = nil
 
 	for time.Now().Before(deadline) {
 		for d.uart.Buffered() > 0 {
@@ -283,18 +288,18 @@ func (d *Device) readPacket(timeout time.Duration) ([]byte, error) {
 				continue
 			}
 
-			pkt := make([]byte, total)
-			copy(pkt, buf[:total])
-			sum := checksum(pkt[6 : total-2])
-			if pkt[total-2] == byte(sum>>8) && pkt[total-1] == byte(sum) {
-				d.rxBuf = append([]byte(nil), buf[total:]...)
-				return pkt, nil
+			sum := checksum(buf[6 : total-2])
+			if buf[total-2] == byte(sum>>8) && buf[total-1] == byte(sum) {
+				d.rxBuf = append(d.rxBuf[:0], buf[total:]...)
+				d.rxScratch = buf[:0]
+				return buf[:total], nil
 			}
 			buf = buf[1:] // checksum mismatch: resync one byte ahead
 		}
 		time.Sleep(time.Millisecond)
 	}
-	d.rxBuf = buf
+	d.rxBuf = append(d.rxBuf[:0], buf...)
+	d.rxScratch = buf[:0]
 	return nil, ErrTimeout
 }
 
@@ -338,22 +343,34 @@ func (d *Device) transceive(cmd byte, payload []byte, timeout time.Duration) ([]
 		return nil, 0, err
 	}
 	confirm, data := ackData(pkt)
+	// Copy ACK data so callers never hold a scratch-buffer alias.
+	if len(data) > 0 {
+		data = append([]byte(nil), data...)
+	}
 	return data, confirm, nil
 }
 
-// readData collects data packets until an end-data packet arrives or the
-// expected byte count is reached.
+// readData collects data packets into a fresh buffer.
 func (d *Device) readData(expected int, timeout time.Duration) ([]byte, error) {
-	data := make([]byte, 0, expected)
+	data := make([]byte, expected)
+	n, err := d.readDataInto(data, timeout)
+	return data[:n], err
+}
+
+// readDataInto copies data packet payloads into dst until an end-data packet
+// arrives or dst is full. It returns the number of bytes written, which may be
+// smaller than len(dst) when the module ends the transfer early.
+func (d *Device) readDataInto(dst []byte, timeout time.Duration) (int, error) {
+	written := 0
 	deadline := time.Now().Add(timeout)
-	for len(data) < expected {
+	for written < len(dst) {
 		remaining := time.Until(deadline)
 		if remaining <= 0 {
-			break
+			return written, ErrTimeout
 		}
 		pkt, err := d.readPacket(remaining)
 		if err != nil {
-			return data, err
+			return written, err
 		}
 		if d.skipWakeup(pkt) {
 			continue
@@ -364,11 +381,11 @@ func (d *Device) readData(expected int, timeout time.Duration) ([]byte, error) {
 
 		// Data packets have no confirmation byte: the payload starts at 9.
 		if end := len(pkt) - 2; end > 9 {
-			data = append(data, pkt[9:end]...)
+			written += copy(dst[written:], pkt[9:end])
 		}
 		if pkt[6] == pidEndData {
-			break
+			return written, nil
 		}
 	}
-	return data, nil
+	return written, nil
 }

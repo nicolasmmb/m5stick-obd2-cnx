@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"image/color"
 	"machine"
@@ -126,7 +127,7 @@ func main() {
 		} else {
 			println("init:", err.Error())
 		}
-		drawRun("INIT", "toque no sensor...", yellow)
+		drawRun("INIT", "touch the sensor...", yellow)
 		time.Sleep(500 * time.Millisecond)
 	}
 	_ = dev.SetWorkMode(1)
@@ -178,7 +179,7 @@ func handleButtons(dev *finger2.Device) {
 func runTest(dev *finger2.Device, i int) {
 	tc := tests[i]
 	println("TEST|START|" + tc.name)
-	drawRun(tc.name, "EXECUTANDO...", cyan)
+	drawRun(tc.name, "RUNNING...", cyan)
 	ok, detail := tc.run(dev)
 	res := "PASS"
 	if !ok {
@@ -240,7 +241,7 @@ func tReadINF(d *finger2.Device) (bool, string) {
 		return false, err.Error()
 	}
 	if len(data) == 0 {
-		return false, "vazio"
+		return false, "empty"
 	}
 	n := len(data)
 	if n > 8 {
@@ -270,7 +271,7 @@ func tNotepad(d *finger2.Device) (bool, string) {
 			return false, fmt.Sprintf("byte %d: %02X != %02X", i, got[i], want[i])
 		}
 	}
-	return true, "32 bytes conferem"
+	return true, "32 bytes match"
 }
 
 func tLEDModes(d *finger2.Device) (bool, string) {
@@ -283,7 +284,7 @@ func tLEDModes(d *finger2.Device) (bool, string) {
 	}
 	time.Sleep(1500 * time.Millisecond)
 	_ = d.ControlLED(finger2.LEDBreath, finger2.LEDBlue, finger2.LEDBlue, 0)
-	return true, "blink vermelho + fade (visual)"
+	return true, "red blink + fade (visual)"
 }
 
 func tWorkMode(d *finger2.Device) (bool, string) {
@@ -298,7 +299,7 @@ func tWorkMode(d *finger2.Device) (bool, string) {
 	if err != nil {
 		return false, "get: " + err.Error()
 	}
-	return got == 1, fmt.Sprintf("orig=%d lido=%d", orig, got)
+	return got == 1, fmt.Sprintf("orig=%d read=%d", orig, got)
 }
 
 func tSleepTime(d *finger2.Device) (bool, string) {
@@ -314,19 +315,19 @@ func tSleepTime(d *finger2.Device) (bool, string) {
 		return false, "get: " + err.Error()
 	}
 	_ = d.SetSleepTime(orig)
-	return got == 30, fmt.Sprintf("orig=%d lido=%d restaurado=%d", orig, got, orig)
+	return got == 30, fmt.Sprintf("orig=%d read=%d restored=%d", orig, got, orig)
 }
 
 func tSaveConfig(d *finger2.Device) (bool, string) {
 	if err := d.SaveConfig(0); err != nil {
 		return false, err.Error()
 	}
-	return true, "config salva no flash"
+	return true, "config saved to flash"
 }
 
 func tLoadChar(d *finger2.Device) (bool, string) {
 	if d.Templates == 0 {
-		return false, "sem template: cadastre antes"
+		return false, "no template: enroll first"
 	}
 	c, err := d.LoadChar(1, 0)
 	if err != nil {
@@ -337,7 +338,7 @@ func tLoadChar(d *finger2.Device) (bool, string) {
 
 func tTemplate(d *finger2.Device) (bool, string) {
 	if d.Templates == 0 {
-		return false, "sem template: cadastre antes"
+		return false, "no template: enroll first"
 	}
 	c, err := d.LoadChar(1, 0)
 	if err != nil || c != finger2.ConfirmOK {
@@ -348,7 +349,7 @@ func tTemplate(d *finger2.Device) (bool, string) {
 		return false, "upload: " + err.Error()
 	}
 	if len(tpl) == 0 {
-		return false, "upload vazio"
+		return false, "empty upload"
 	}
 	if err := d.DownloadTemplateAuto(tpl); err != nil {
 		return false, "download: " + err.Error()
@@ -382,8 +383,8 @@ func waitFinger(d *finger2.Device, name, msg string) bool {
 }
 
 func tSearchNow(d *finger2.Device) (bool, string) {
-	if !waitFinger(d, "SearchNow", "ENCOSTE O DEDO") {
-		return false, "sem dedo"
+	if !waitFinger(d, "SearchNow", "PLACE FINGER") {
+		return false, "no finger"
 	}
 	res, err := d.SearchNow(0, d.Capacity)
 	if err != nil {
@@ -407,20 +408,20 @@ func tWakeup(d *finger2.Device) (bool, string) {
 	if err := d.SetSleepTime(10); err != nil {
 		return false, "sleep: " + err.Error()
 	}
-	drawRun("Wakeup", "aguarde 12s", yellow)
+	drawRun("Wakeup", "wait 12s", yellow)
 	time.Sleep(12 * time.Second)
-	drawRun("Wakeup", "TOQUE NO SENSOR", cyan)
+	drawRun("Wakeup", "TOUCH THE SENSOR", cyan)
 	ok, err := d.WaitWakeup(20 * time.Second)
 	_ = d.SetWorkMode(1)
 	if err != nil {
 		return false, err.Error()
 	}
-	return ok, "pacote de wakeup recebido"
+	return ok, "wakeup packet received"
 }
 
 func tAutoIdentify(d *finger2.Device) (bool, string) {
-	if !waitFinger(d, "AutoIdentify", "ENCOSTE O DEDO") {
-		return false, "sem dedo"
+	if !waitFinger(d, "AutoIdentify", "PLACE FINGER") {
+		return false, "no finger"
 	}
 	if err := d.StartAutoIdentify(0, 0xFFFF, 0); err != nil {
 		return false, err.Error()
@@ -429,14 +430,14 @@ func tAutoIdentify(d *finger2.Device) (bool, string) {
 	deadline := time.Now().Add(15 * time.Second)
 	for time.Now().Before(deadline) {
 		p, err := d.NextIdentifyEvent(2 * time.Second)
-		if err == finger2.ErrTimeout {
+		if errors.Is(err, finger2.ErrTimeout) {
 			continue
 		}
 		if err != nil {
 			return false, err.Error()
 		}
 		println("TEST|AUTOID|stage", p.Stage, "confirm", p.Confirm, "id", p.ID, "score", p.Score)
-		drawRun("AutoIdentify", fmt.Sprintf("etapa %d confirm %d", p.Stage, p.Confirm), yellow)
+		drawRun("AutoIdentify", fmt.Sprintf("stage %d confirm %d", p.Stage, p.Confirm), yellow)
 		last = p
 		if p.Stage == finger2.IdentifyStageVerify {
 			break
@@ -462,7 +463,7 @@ func drawMenu() {
 	}
 
 	fb.clear()
-	tinyfont.WriteLine(&fb, &freemono.Bold9pt7b, 4, 15, "FINGER2 TESTES", cyan)
+	tinyfont.WriteLine(&fb, &freemono.Bold9pt7b, 4, 15, "FINGER2 TESTS", cyan)
 	fb.fillRect(0, 19, screenW, 1, darkGray)
 
 	for row := 0; row < 5; row++ {
@@ -488,17 +489,17 @@ func drawMenu() {
 	}
 
 	fb.fillRect(0, screenH-14, screenW, 1, darkGray)
-	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 133, "A/B: item   C: rodar", gray)
+	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 133, "A/B: item   C: run", gray)
 	fb.flush()
 }
 
 func drawRun(name, msg string, c color.RGBA) {
 	fb.clear()
-	tinyfont.WriteLine(&fb, &freemono.Bold9pt7b, 4, 15, "TESTE", gray)
+	tinyfont.WriteLine(&fb, &freemono.Bold9pt7b, 4, 15, "TEST", gray)
 	tinyfont.WriteLine(&fb, &freemono.Bold9pt7b, 4, 40, name, cyan)
 	fb.fillRect(0, 46, screenW, 1, darkGray)
 	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 68, msg, c)
-	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 133, "aguarde / veja a serial", gray)
+	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 133, "wait / see serial", gray)
 	fb.flush()
 }
 

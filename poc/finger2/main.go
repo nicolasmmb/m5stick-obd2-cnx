@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"image/color"
 	"machine"
@@ -47,6 +48,9 @@ var (
 
 	display st7789.Device
 	fb      canvas
+
+	// gray4 maps the sensor 4-bit levels to RGB565 once.
+	gray4 [16]pixel.RGB565BE
 
 	mode int
 
@@ -143,6 +147,10 @@ func main() {
 	initDisplay()
 	println("finger2: display ok")
 	fb = newCanvas()
+	for i := range gray4 {
+		g := uint8(i * 17)
+		gray4[i] = pixel.NewColor[pixel.RGB565BE](g, g, g)
+	}
 
 	uart := machine.UART1
 	if err := uart.Configure(machine.UARTConfig{
@@ -370,7 +378,6 @@ func handleButtons(dev *finger2.Device, pwm *machine.LEDCPWM, status *string, co
 		hint = ""
 		imgLoaded = false
 		imgErr = ""
-		imgBuff = nil
 		*status = modePrompt()
 		*col = modeColor(mode)
 		cooldown = time.Now()
@@ -431,7 +438,6 @@ func handleButtons(dev *finger2.Device, pwm *machine.LEDCPWM, status *string, co
 		case modeImage:
 			imgLoaded = false
 			imgErr = ""
-			imgBuff = nil
 			*status = "CAPTURANDO..."
 			*col = yellow
 			hint = ""
@@ -564,7 +570,7 @@ func doClear(dev *finger2.Device, pwm *machine.LEDCPWM) (string, color.RGBA) {
 
 func handleEnroll(dev *finger2.Device, pwm *machine.LEDCPWM) (string, color.RGBA) {
 	ev, err := dev.NextEnrollEvent(200 * time.Millisecond)
-	if err == finger2.ErrTimeout {
+	if errors.Is(err, finger2.ErrTimeout) {
 		// No event yet: the module is waiting for a finger.
 		if enrollStep == 1 {
 			return "LEVANTE O DEDO", yellow
@@ -758,13 +764,9 @@ func renderImage(status string, c color.RGBA) {
 			} else {
 				v = imgBuff[idx] >> 4
 			}
-			g := v * 17
 			sx := int(dx) + ih - 1 - y
 			sy := dy + x
-			if sx < 0 || sy < 0 || sx >= screenW || sy >= screenH {
-				continue
-			}
-			fb.img.Set(int(sx), int(sy), pixel.NewColor[pixel.RGB565BE](g, g, g))
+			fb.img.Set(sx, sy, gray4[v])
 		}
 	}
 
@@ -812,15 +814,19 @@ func takeImage(dev *finger2.Device) (bool, string) {
 		return false, "ENCOSTE O DEDO"
 	}
 
-	img, err := dev.UpImage()
-	if len(img) == 0 {
+	if cap(imgBuff) < finger2.ImageWidth*finger2.ImageHeight/2 {
+		imgBuff = make([]byte, finger2.ImageWidth*finger2.ImageHeight/2)
+	}
+	img := imgBuff[:cap(imgBuff)]
+	n, err := dev.UpImageTo(img)
+	if n == 0 {
 		imgErr = "UPLOAD"
 		if err != nil {
 			println("finger2: upimage err", err.Error())
 		}
 		return false, "FALHA NO UPLOAD"
 	}
-	imgBuff = img
+	imgBuff = img[:n]
 	imgLoaded = true
 	imgErr = ""
 

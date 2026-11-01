@@ -41,11 +41,12 @@ type MatchResult struct {
 // Fields updated by Init are informational copies of the module state. They
 // are safe to read from the goroutine that owns the Device.
 type Device struct {
-	uart    *machine.UART
-	address uint32
-	timeout time.Duration
-	rxBuf   []byte
-	wakeup  func([]byte)
+	uart      *machine.UART
+	address   uint32
+	timeout   time.Duration
+	rxBuf     []byte
+	rxScratch []byte
+	wakeup    func([]byte)
 
 	// Firmware is the module firmware version (0xD7).
 	Firmware uint8
@@ -193,9 +194,10 @@ func (d *Device) Init() error {
 			case len(data) < 1:
 				lastErr = ErrShortReply
 			default:
+				fw := data[0]
 				p, err := d.ReadSysParams()
 				if err == nil {
-					firmware, params, ready = data[0], p, true
+					firmware, params, ready = fw, p, true
 				} else {
 					lastErr = err
 				}
