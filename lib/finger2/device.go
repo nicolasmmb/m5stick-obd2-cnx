@@ -1,6 +1,7 @@
 package finger2
 
 import (
+	"context"
 	"time"
 
 	"m5stick-obd2-cnx/lib/finger2/internal/wire"
@@ -36,8 +37,11 @@ type MatchResult struct {
 
 // Device is an A-K323CP fingerprint unit attached to a UART.
 //
-// Fields updated by Init are informational copies of the module state. They
-// are safe to read from the goroutine that owns the Device.
+// A Device is safe for concurrent use: one-shot operations are serialized.
+// Auto-enroll and auto-identify sessions hold the device until their terminal
+// stage, Cancel or context expiry (60s max).
+//
+// Fields updated by Init are informational copies of the module state.
 type Device struct {
 	transport Transport
 	address   uint32
@@ -46,6 +50,12 @@ type Device struct {
 	rxScratch []byte
 	txScratch []byte
 	wakeup    func([]byte)
+
+	cmdMu         chan struct{}
+	sessionMu     chan struct{}
+	sessionOn     uint32
+	sessionCtx    context.Context
+	sessionCancel context.CancelFunc
 
 	// Firmware is the module firmware version (0xD7).
 	Firmware uint8
@@ -66,15 +76,27 @@ type Device struct {
 }
 
 // SetTimeout changes the default command timeout.
-func (d *Device) SetTimeout(t time.Duration) { d.timeout = t }
+func (d *Device) SetTimeout(t time.Duration) {
+	_ = d.lockOp(context.Background())
+	d.timeout = t
+	d.unlockOp()
+}
 
 // SetAddress changes the module address (broadcast by default).
-func (d *Device) SetAddress(a uint32) { d.address = a }
+func (d *Device) SetAddress(a uint32) {
+	_ = d.lockOp(context.Background())
+	d.address = a
+	d.unlockOp()
+}
 
 // SetWakeupHandler registers a callback for the module wakeup packet
 // (EF 01 FF FF FF FF 07 00 03 FF 01 09), sent when a finger touches the unit
 // while it sleeps. Wakeup packets are also skipped inside command reads.
-func (d *Device) SetWakeupHandler(h func([]byte)) { d.wakeup = h }
+func (d *Device) SetWakeupHandler(h func([]byte)) {
+	_ = d.lockOp(context.Background())
+	d.wakeup = h
+	d.unlockOp()
+}
 
 // skipWakeup consumes wakeup packets and fires the handler.
 func (d *Device) skipWakeup(pkt []byte) bool {
@@ -89,6 +111,10 @@ func (d *Device) skipWakeup(pkt []byte) bool {
 
 // WaitWakeup blocks until the module reports a touch or the timeout expires.
 func (d *Device) WaitWakeup(timeout time.Duration) (bool, error) {
+	if err := d.lockOp(context.Background()); err != nil {
+		return false, err
+	}
+	defer d.unlockOp()
 	deadline := time.Now().Add(timeout)
 	for {
 		remaining := time.Until(deadline)
@@ -107,6 +133,10 @@ func (d *Device) WaitWakeup(timeout time.Duration) (bool, error) {
 
 // Activate wakes the fingerprint module (0xD4).
 func (d *Device) Activate() error {
+	if err := d.lockOp(context.Background()); err != nil {
+		return err
+	}
+	defer d.unlockOp()
 	_, confirm, err := d.transceive(CmdActivate, nil, time.Second)
 	if err != nil {
 		return err
@@ -119,6 +149,10 @@ func (d *Device) Activate() error {
 
 // GetFirmwareVersion reads the module firmware version (0xD7).
 func (d *Device) GetFirmwareVersion() (uint8, error) {
+	if err := d.lockOp(context.Background()); err != nil {
+		return 0, err
+	}
+	defer d.unlockOp()
 	data, confirm, err := d.transceive(CmdFirmware, nil, time.Second)
 	if err != nil {
 		return 0, err
@@ -145,6 +179,26 @@ func (d *Device) Init() error {
 // Init does not change the module match level; call SetMatchLevel explicitly
 // if the application needs a specific level.
 func (d *Device) InitWithTimeout(timeout time.Duration) error {
+	return d.InitContext(context.Background(), timeout)
+}
+
+// InitContext is InitWithTimeout with a cancellable context. Waiting for the
+// device lock and the retry loop both stop when ctx is done.
+func (d *Device) InitContext(ctx context.Context, timeout time.Duration) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := d.lockOp(ctx); err != nil {
+		return err
+	}
+	defer d.unlockOp()
+	return d.initLocked(ctx, timeout)
+}
+
+func (d *Device) initLocked(ctx context.Context, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 
 	d.flush()
@@ -161,6 +215,9 @@ func (d *Device) InitWithTimeout(timeout time.Duration) error {
 		lastErr  = ErrTimeout
 	)
 	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		remaining := time.Until(deadline)
 		if remaining <= 0 {
 			break
@@ -191,7 +248,7 @@ func (d *Device) InitWithTimeout(timeout time.Duration) error {
 					if r := time.Until(deadline); r < saved {
 						d.timeout = r
 					}
-					p, err := d.ReadSysParams()
+					p, err := d.readSysParamsLocked()
 					d.timeout = saved
 					if err == nil {
 						firmware, params, ready = fw, p, true
@@ -218,10 +275,10 @@ func (d *Device) InitWithTimeout(timeout time.Duration) error {
 	d.Status = params.Status
 	d.MatchLevel = params.MatchLevel
 
-	if count, err := d.ValidTemplates(); err == nil {
+	if count, err := d.validTemplatesLocked(); err == nil {
 		d.Templates = count
 	}
-	_ = d.ControlLED(LEDBreath, LEDBlue, LEDBlue, 0)
+	_ = d.controlLEDLocked(LEDBreath, LEDBlue, LEDBlue, 0)
 	return nil
 }
 
@@ -240,7 +297,11 @@ func sleepFor(d time.Duration) {
 
 // RefreshTemplates re-reads the number of stored templates.
 func (d *Device) RefreshTemplates() {
-	if count, err := d.ValidTemplates(); err == nil {
+	if err := d.lockOp(context.Background()); err != nil {
+		return
+	}
+	defer d.unlockOp()
+	if count, err := d.validTemplatesLocked(); err == nil {
 		d.Templates = count
 	}
 }

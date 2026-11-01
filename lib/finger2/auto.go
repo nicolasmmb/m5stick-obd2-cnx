@@ -1,6 +1,7 @@
 package finger2
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -64,27 +65,55 @@ type IdentifyProgress struct {
 // StartAutoEnroll starts the module enrollment state machine (0x31).
 // count is the number of captures (1..6); call NextEnrollEvent afterwards.
 func (d *Device) StartAutoEnroll(page uint16, count uint8, flags uint16) error {
+	return d.StartAutoEnrollContext(context.Background(), page, count, flags)
+}
+
+// StartAutoEnrollContext starts the enrollment state machine. The session keeps
+// the device locked until a terminal stage, Cancel or ctx expiry (60s max).
+func (d *Device) StartAutoEnrollContext(ctx context.Context, page uint16, count uint8, flags uint16) error {
 	if count == 0 || count > 6 {
 		return fmt.Errorf("%w: enroll count %d out of range (1..6)", ErrInvalidParam, count)
 	}
 	if d.Capacity > 0 && page >= d.Capacity {
 		return fmt.Errorf("%w: page %d >= capacity %d", ErrInvalidParam, page, d.Capacity)
 	}
+	if err := d.startSession(ctx); err != nil {
+		return err
+	}
 	payload := []byte{byte(page >> 8), byte(page), count, byte(flags >> 8), byte(flags)}
-	d.flush()
-	return d.send(CmdAutoEnroll, payload)
+	if err := d.startCommand(CmdAutoEnroll, payload); err != nil {
+		d.endSession()
+		return err
+	}
+	return nil
 }
 
 // NextEnrollEvent waits for the next AutoEnroll status packet.
 func (d *Device) NextEnrollEvent(timeout time.Duration) (EnrollProgress, error) {
+	if !d.inSession() {
+		return EnrollProgress{}, ErrNoSession
+	}
+	if err := acquire(context.Background(), d.cmdMu); err != nil {
+		return EnrollProgress{}, err
+	}
+	defer func() { <-d.cmdMu }()
+
 	deadline := time.Now().Add(timeout)
 	for {
+		if err := d.sessionCtx.Err(); err != nil {
+			d.endSession()
+			return EnrollProgress{}, err
+		}
 		remaining := time.Until(deadline)
 		if remaining <= 0 {
 			return EnrollProgress{}, ErrTimeout
 		}
 		pkt, err := d.readPacket(remaining)
 		if err != nil {
+			if ctxErr := d.sessionCtx.Err(); ctxErr != nil {
+				d.endSession()
+				return EnrollProgress{}, ctxErr
+			}
 			return EnrollProgress{}, err
 		}
 		if d.skipWakeup(pkt) {
@@ -98,6 +127,9 @@ func (d *Device) NextEnrollEvent(timeout time.Duration) (EnrollProgress, error) 
 		if len(data) >= 2 {
 			progress.Stage = data[0]
 			progress.Param = data[1]
+		}
+		if progress.Stage == EnrollStageStore {
+			d.endSession()
 		}
 		return progress, nil
 	}
@@ -113,6 +145,7 @@ func (d *Device) AutoEnroll(page uint16, count uint8, flags uint16, cb func(p En
 	for {
 		progress, err := d.NextEnrollEvent(30 * time.Second)
 		if err != nil {
+			d.endSession()
 			return last, err
 		}
 		last = progress.Confirm
@@ -129,24 +162,52 @@ func (d *Device) AutoEnroll(page uint16, count uint8, flags uint16, cb func(p En
 // StartAutoIdentify starts the module identification loop (0x32).
 // id 0xFFFF searches the whole library. Call NextIdentifyEvent afterwards.
 func (d *Device) StartAutoIdentify(security uint8, id uint16, flags uint16) error {
+	return d.StartAutoIdentifyContext(context.Background(), security, id, flags)
+}
+
+// StartAutoIdentifyContext starts the identification loop. The session keeps
+// the device locked until the verify stage, Cancel or ctx expiry (60s max).
+func (d *Device) StartAutoIdentifyContext(ctx context.Context, security uint8, id uint16, flags uint16) error {
 	if security > 1 {
 		return fmt.Errorf("%w: security level %d out of range (0..1)", ErrInvalidParam, security)
 	}
+	if err := d.startSession(ctx); err != nil {
+		return err
+	}
 	payload := []byte{security, byte(id >> 8), byte(id), byte(flags >> 8), byte(flags)}
-	d.flush()
-	return d.send(CmdAutoIdentify, payload)
+	if err := d.startCommand(CmdAutoIdentify, payload); err != nil {
+		d.endSession()
+		return err
+	}
+	return nil
 }
 
 // NextIdentifyEvent waits for the next AutoIdentify status packet.
 func (d *Device) NextIdentifyEvent(timeout time.Duration) (IdentifyProgress, error) {
+	if !d.inSession() {
+		return IdentifyProgress{}, ErrNoSession
+	}
+	if err := acquire(context.Background(), d.cmdMu); err != nil {
+		return IdentifyProgress{}, err
+	}
+	defer func() { <-d.cmdMu }()
+
 	deadline := time.Now().Add(timeout)
 	for {
+		if err := d.sessionCtx.Err(); err != nil {
+			d.endSession()
+			return IdentifyProgress{}, err
+		}
 		remaining := time.Until(deadline)
 		if remaining <= 0 {
 			return IdentifyProgress{}, ErrTimeout
 		}
 		pkt, err := d.readPacket(remaining)
 		if err != nil {
+			if ctxErr := d.sessionCtx.Err(); ctxErr != nil {
+				d.endSession()
+				return IdentifyProgress{}, ctxErr
+			}
 			return IdentifyProgress{}, err
 		}
 		if d.skipWakeup(pkt) {
@@ -166,6 +227,9 @@ func (d *Device) NextIdentifyEvent(timeout time.Duration) (IdentifyProgress, err
 		if len(data) >= 5 {
 			progress.Score = uint16(data[3])<<8 | uint16(data[4])
 		}
+		if progress.Stage == IdentifyStageVerify {
+			d.endSession()
+		}
 		return progress, nil
 	}
 }
@@ -180,6 +244,7 @@ func (d *Device) AutoIdentify(security uint8, id uint16, flags uint16, cb func(p
 	for {
 		progress, err := d.NextIdentifyEvent(30 * time.Second)
 		if err != nil {
+			d.endSession()
 			return last, err
 		}
 		last = progress

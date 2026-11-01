@@ -1,6 +1,7 @@
 package finger2
 
 import (
+	"context"
 	"fmt"
 	"time"
 )
@@ -12,6 +13,14 @@ const (
 
 // ValidTemplates reads the number of stored templates (0x1D).
 func (d *Device) ValidTemplates() (uint16, error) {
+	if err := d.lockOp(context.Background()); err != nil {
+		return 0, err
+	}
+	defer d.unlockOp()
+	return d.validTemplatesLocked()
+}
+
+func (d *Device) validTemplatesLocked() (uint16, error) {
 	data, confirm, err := d.transceive(CmdValidTemplates, nil, time.Second)
 	if err != nil {
 		return 0, err
@@ -28,6 +37,14 @@ func (d *Device) ValidTemplates() (uint16, error) {
 // ReadIndexTable reads one 32-byte page of the template index (0x1F).
 // Each bit represents one template slot: set means occupied.
 func (d *Device) ReadIndexTable(page uint8) ([]byte, error) {
+	if err := d.lockOp(context.Background()); err != nil {
+		return nil, err
+	}
+	defer d.unlockOp()
+	return d.readIndexTableLocked(page)
+}
+
+func (d *Device) readIndexTableLocked(page uint8) ([]byte, error) {
 	data, confirm, err := d.transceive(CmdReadIndexTable, []byte{page}, time.Second)
 	if err != nil {
 		return nil, err
@@ -44,7 +61,11 @@ func (d *Device) ReadIndexTable(page uint8) ([]byte, error) {
 // FirstFreePage returns the first unused template slot. It reads only the
 // first index page, which covers the module capacity of 100 slots.
 func (d *Device) FirstFreePage() (uint16, error) {
-	table, err := d.ReadIndexTable(0)
+	if err := d.lockOp(context.Background()); err != nil {
+		return 0, err
+	}
+	defer d.unlockOp()
+	table, err := d.readIndexTableLocked(0)
 	if err != nil {
 		return 0, err
 	}
@@ -71,6 +92,10 @@ func (d *Device) FirstFreePage() (uint16, error) {
 // returns the bytes, the actual size reported by the module and the
 // confirmation code.
 func (d *Device) UploadTemplate(offset, size uint16) ([]byte, uint16, uint8, error) {
+	if err := d.lockOp(context.Background()); err != nil {
+		return nil, 0, 0, err
+	}
+	defer d.unlockOp()
 	if size == 0 {
 		return nil, 0, ConfirmPacketError, fmt.Errorf("%w: UploadTemplate size is zero", ErrInvalidParam)
 	}
@@ -95,6 +120,10 @@ func (d *Device) UploadTemplate(offset, size uint16) ([]byte, uint16, uint8, err
 // DownloadTemplate writes template data at offset into the module buffer
 // (0x7B). Call Store afterwards to persist the buffer.
 func (d *Device) DownloadTemplate(offset uint16, data []byte) (uint8, error) {
+	if err := d.lockOp(context.Background()); err != nil {
+		return 0, err
+	}
+	defer d.unlockOp()
 	if len(data) == 0 {
 		return ConfirmPacketError, fmt.Errorf("%w: DownloadTemplate empty data", ErrInvalidParam)
 	}
@@ -114,6 +143,10 @@ func (d *Device) DownloadTemplate(offset uint16, data []byte) (uint8, error) {
 // UploadTemplateAuto reads a whole template (0x7A) in chunks. size is the
 // template size, typically 7262 bytes. Reading stops on a short chunk.
 func (d *Device) UploadTemplateAuto(size uint16) ([]byte, error) {
+	if err := d.lockOp(context.Background()); err != nil {
+		return nil, err
+	}
+	defer d.unlockOp()
 	if size == 0 {
 		return nil, fmt.Errorf("%w: UploadTemplateAuto size is zero", ErrInvalidParam)
 	}
@@ -154,6 +187,10 @@ func (d *Device) UploadTemplateAuto(size uint16) ([]byte, error) {
 
 // DownloadTemplateAuto writes a whole template (0x7B) in chunks.
 func (d *Device) DownloadTemplateAuto(data []byte) error {
+	if err := d.lockOp(context.Background()); err != nil {
+		return err
+	}
+	defer d.unlockOp()
 	if len(data) == 0 {
 		return fmt.Errorf("%w: DownloadTemplateAuto empty data", ErrInvalidParam)
 	}

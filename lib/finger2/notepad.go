@@ -1,12 +1,17 @@
 package finger2
 
 import (
+	"context"
 	"fmt"
 	"time"
 )
 
 // ReadNotepad reads one 32-byte notepad entry (0x19). id must be 0..3.
 func (d *Device) ReadNotepad(id uint8) ([]byte, error) {
+	if err := d.lockOp(context.Background()); err != nil {
+		return nil, err
+	}
+	defer d.unlockOp()
 	if id > 3 {
 		return nil, fmt.Errorf("%w: notepad id %d out of range (0..3)", ErrInvalidParam, id)
 	}
@@ -26,6 +31,10 @@ func (d *Device) ReadNotepad(id uint8) ([]byte, error) {
 // WriteNotepad writes one notepad entry (0x18). Data is truncated or padded
 // with zeros to 32 bytes.
 func (d *Device) WriteNotepad(id uint8, data []byte) (uint8, error) {
+	if err := d.lockOp(context.Background()); err != nil {
+		return 0, err
+	}
+	defer d.unlockOp()
 	if id > 3 {
 		return ConfirmPacketError, fmt.Errorf("%w: notepad id %d out of range (0..3)", ErrInvalidParam, id)
 	}

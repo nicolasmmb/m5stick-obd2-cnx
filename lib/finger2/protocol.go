@@ -130,6 +130,7 @@ var (
 	ErrNoSpace      = errors.New("finger2: no free fingerprint page")
 	ErrInvalidParam = errors.New("finger2: invalid parameter")
 	ErrShortReply   = errors.New("finger2: short response")
+	ErrNoSession    = errors.New("finger2: no auto session active")
 )
 
 // Code is a confirmation code returned by the module.

@@ -1,6 +1,7 @@
 package finger2
 
 import (
+	"context"
 	"fmt"
 	"time"
 )
@@ -9,6 +10,14 @@ import (
 // LEDBlink, LEDOn, LEDOff, LEDFadeIn or LEDFadeOut; colors are LEDBlack..
 // LEDWhite; cycle is the loop count (0 for continuous where supported).
 func (d *Device) ControlLED(mode, color, endColor, cycle uint8) error {
+	if err := d.lockOp(context.Background()); err != nil {
+		return err
+	}
+	defer d.unlockOp()
+	return d.controlLEDLocked(mode, color, endColor, cycle)
+}
+
+func (d *Device) controlLEDLocked(mode, color, endColor, cycle uint8) error {
 	if mode < LEDBreath || mode > LEDFadeOut {
 		return fmt.Errorf("%w: LED mode %d out of range (1..6)", ErrInvalidParam, mode)
 	}
@@ -27,5 +36,9 @@ func (d *Device) ControlLED(mode, color, endColor, cycle uint8) error {
 
 // SetLED is an alias for ControlLED kept for readability at call sites.
 func (d *Device) SetLED(mode, color, endColor, cycle uint8) error {
-	return d.ControlLED(mode, color, endColor, cycle)
+	if err := d.lockOp(context.Background()); err != nil {
+		return err
+	}
+	defer d.unlockOp()
+	return d.controlLEDLocked(mode, color, endColor, cycle)
 }

@@ -2,6 +2,7 @@ package finger2
 
 import (
 	"bytes"
+	"context"
 	"testing"
 	"time"
 )
@@ -200,5 +201,100 @@ func TestCaptureNoFinger(t *testing.T) {
 	}
 	if detected || confirm != ConfirmNoFinger {
 		t.Fatalf("detected=%v confirm=%#02x, want false/0x02", detected, confirm)
+	}
+}
+
+func TestConcurrentCommands(t *testing.T) {
+	d, _ := newFakeT(defaultHandler)
+	const goroutines, iterations = 8, 25
+	errs := make(chan error, goroutines)
+	for g := 0; g < goroutines; g++ {
+		go func() {
+			for i := 0; i < iterations; i++ {
+				p, err := d.ReadSysParams()
+				if err != nil {
+					errs <- err
+					return
+				}
+				if p.Capacity != 100 {
+					errs <- ErrShortReply
+					return
+				}
+			}
+			errs <- nil
+		}()
+	}
+	for g := 0; g < goroutines; g++ {
+		if err := <-errs; err != nil {
+			t.Fatalf("concurrent ReadSysParams: %v", err)
+		}
+	}
+}
+
+func TestInitContextCanceled(t *testing.T) {
+	d, _ := newFakeT(defaultHandler)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := d.InitContext(ctx, time.Second); err == nil {
+		t.Fatal("InitContext with a canceled context returned nil")
+	}
+}
+
+func TestSessionBlocksOneShotUntilCancel(t *testing.T) {
+	d, _ := newFakeT(defaultHandler)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := d.StartAutoEnrollContext(ctx, 0, 2, 0); err != nil {
+		t.Fatalf("StartAutoEnrollContext: %v", err)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := d.ReadSysParams()
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		t.Fatalf("one-shot did not block during a session: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	if err := d.Cancel(); err != nil {
+		t.Fatalf("Cancel: %v", err)
+	}
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("one-shot after Cancel: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("one-shot did not resume after Cancel")
+	}
+}
+
+func TestSessionContextCancel(t *testing.T) {
+	d, _ := newFakeT(defaultHandler)
+	ctx, cancel := context.WithCancel(context.Background())
+	if err := d.StartAutoEnrollContext(ctx, 0, 2, 0); err != nil {
+		t.Fatalf("StartAutoEnrollContext: %v", err)
+	}
+	cancel()
+
+	// Either Next reports the context error or the watchdog ended the session.
+	_, _ = d.NextEnrollEvent(50 * time.Millisecond)
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := d.ReadSysParams()
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("ReadSysParams after session cancel: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("session was not released after context cancel")
 	}
 }

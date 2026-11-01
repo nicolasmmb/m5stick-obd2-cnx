@@ -23,4 +23,11 @@
 //
 // Enrollment is delegated to the module's own state machine through
 // StartAutoEnroll/NextEnrollEvent.
+//
+// # Concurrency
+//
+// A Device is safe for concurrent use: one-shot operations are serialized with
+// a blocking lock. Auto-enroll and auto-identify sessions keep the device until
+// the terminal stage, Cancel or context expiry; use the *Context variants to
+// bound the wait. Every session is capped at 60 seconds.
 package finger2

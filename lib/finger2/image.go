@@ -1,6 +1,7 @@
 package finger2
 
 import (
+	"context"
 	"fmt"
 	"time"
 )
@@ -8,8 +9,16 @@ import (
 // UpImage uploads the current image (0x0A) into a new buffer.
 // It is a convenience wrapper around UpImageTo.
 func (d *Device) UpImage() ([]byte, error) {
+	if err := d.lockOp(context.Background()); err != nil {
+		return nil, err
+	}
+	defer d.unlockOp()
+	return d.upImageLocked()
+}
+
+func (d *Device) upImageLocked() ([]byte, error) {
 	buf := make([]byte, imageBytes)
-	n, err := d.UpImageTo(buf)
+	n, err := d.upImageToLocked(buf)
 	if n > 0 {
 		return buf[:n], nil
 	}
@@ -24,6 +33,14 @@ func (d *Device) UpImage() ([]byte, error) {
 // and the high nibble the odd one, where 0 is black and 15 is white. The
 // transfer ends with an end-data packet; a short image is returned as-is.
 func (d *Device) UpImageTo(dst []byte) (int, error) {
+	if err := d.lockOp(context.Background()); err != nil {
+		return 0, err
+	}
+	defer d.unlockOp()
+	return d.upImageToLocked(dst)
+}
+
+func (d *Device) upImageToLocked(dst []byte) (int, error) {
 	if len(dst) < imageBytes {
 		return 0, fmt.Errorf("%w: UpImageTo buffer %d < %d", ErrInvalidParam, len(dst), imageBytes)
 	}
@@ -44,6 +61,10 @@ func (d *Device) UpImageTo(dst []byte) (int, error) {
 
 // ImageInfo reads the area and quality of the image in the buffer (0x3D).
 func (d *Device) ImageInfo() (area, quality uint8, confirm uint8, err error) {
+	if err := d.lockOp(context.Background()); err != nil {
+		return 0, 0, 0, err
+	}
+	defer d.unlockOp()
 	data, confirm, err := d.transceive(CmdImageInfo, nil, time.Second)
 	if err != nil {
 		return 0, 0, confirm, err
@@ -56,8 +77,16 @@ func (d *Device) ImageInfo() (area, quality uint8, confirm uint8, err error) {
 
 // ReadINF reads the 512-byte INF page (0x16) into a new buffer.
 func (d *Device) ReadINF() ([]byte, error) {
+	if err := d.lockOp(context.Background()); err != nil {
+		return nil, err
+	}
+	defer d.unlockOp()
+	return d.readINFLocked()
+}
+
+func (d *Device) readINFLocked() ([]byte, error) {
 	buf := make([]byte, infBytes)
-	n, err := d.ReadINFTo(buf)
+	n, err := d.readINFToLocked(buf)
 	if n > 0 {
 		return buf[:n], nil
 	}
@@ -67,6 +96,14 @@ func (d *Device) ReadINF() ([]byte, error) {
 // ReadINFTo reads the INF page (0x16) into dst, which must hold at least 512
 // bytes.
 func (d *Device) ReadINFTo(dst []byte) (int, error) {
+	if err := d.lockOp(context.Background()); err != nil {
+		return 0, err
+	}
+	defer d.unlockOp()
+	return d.readINFToLocked(dst)
+}
+
+func (d *Device) readINFToLocked(dst []byte) (int, error) {
 	if len(dst) < infBytes {
 		return 0, fmt.Errorf("%w: ReadINFTo buffer %d < %d", ErrInvalidParam, len(dst), infBytes)
 	}

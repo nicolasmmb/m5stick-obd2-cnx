@@ -1,12 +1,21 @@
 package finger2
 
 import (
+	"context"
 	"fmt"
 	"time"
 )
 
 // ReadSysParams reads the 16-byte system parameter block (0x0F).
 func (d *Device) ReadSysParams() (SystemParams, error) {
+	if err := d.lockOp(context.Background()); err != nil {
+		return SystemParams{}, err
+	}
+	defer d.unlockOp()
+	return d.readSysParamsLocked()
+}
+
+func (d *Device) readSysParamsLocked() (SystemParams, error) {
 	data, confirm, err := d.transceive(CmdReadSysPara, nil, d.timeout)
 	if err != nil {
 		return SystemParams{}, err
@@ -30,6 +39,10 @@ func (d *Device) ReadSysParams() (SystemParams, error) {
 
 // ModuleStatus reads the fingerprint module status byte (0xD5).
 func (d *Device) ModuleStatus() (uint8, error) {
+	if err := d.lockOp(context.Background()); err != nil {
+		return 0, err
+	}
+	defer d.unlockOp()
 	data, confirm, err := d.transceive(CmdModuleStatus, nil, time.Second)
 	if err != nil {
 		return 0, err
@@ -45,6 +58,10 @@ func (d *Device) ModuleStatus() (uint8, error) {
 
 // SetSleepTime sets the inactivity timeout before sleep (0xD0), in seconds.
 func (d *Device) SetSleepTime(sec uint8) error {
+	if err := d.lockOp(context.Background()); err != nil {
+		return err
+	}
+	defer d.unlockOp()
 	if sec < 10 {
 		return fmt.Errorf("%w: sleep time %d out of range (10..254)", ErrInvalidParam, sec)
 	}
@@ -60,6 +77,10 @@ func (d *Device) SetSleepTime(sec uint8) error {
 
 // GetSleepTime reads the inactivity timeout before sleep (0xD1), in seconds.
 func (d *Device) GetSleepTime() (uint8, error) {
+	if err := d.lockOp(context.Background()); err != nil {
+		return 0, err
+	}
+	defer d.unlockOp()
 	data, confirm, err := d.transceive(CmdGetSleepTime, nil, time.Second)
 	if err != nil {
 		return 0, err
@@ -75,6 +96,10 @@ func (d *Device) GetSleepTime() (uint8, error) {
 
 // SetWorkMode selects 0 = timed sleep and 1 = always on (0xD2).
 func (d *Device) SetWorkMode(mode uint8) error {
+	if err := d.lockOp(context.Background()); err != nil {
+		return err
+	}
+	defer d.unlockOp()
 	if mode > 1 {
 		return fmt.Errorf("%w: work mode %d out of range (0..1)", ErrInvalidParam, mode)
 	}
@@ -90,6 +115,10 @@ func (d *Device) SetWorkMode(mode uint8) error {
 
 // GetWorkMode reads the current work mode (0xD3).
 func (d *Device) GetWorkMode() (uint8, error) {
+	if err := d.lockOp(context.Background()); err != nil {
+		return 0, err
+	}
+	defer d.unlockOp()
 	data, confirm, err := d.transceive(CmdGetWorkMode, nil, time.Second)
 	if err != nil {
 		return 0, err
@@ -106,6 +135,10 @@ func (d *Device) GetWorkMode() (uint8, error) {
 // SaveConfig persists configuration to flash (0xD6): 0 = sleep time,
 // 1 = work mode.
 func (d *Device) SaveConfig(option uint8) error {
+	if err := d.lockOp(context.Background()); err != nil {
+		return err
+	}
+	defer d.unlockOp()
 	if option > 1 {
 		return fmt.Errorf("%w: save option %d out of range (0..1)", ErrInvalidParam, option)
 	}
@@ -121,6 +154,10 @@ func (d *Device) SaveConfig(option uint8) error {
 
 // Handshake checks that the module is reachable (0x35).
 func (d *Device) Handshake() error {
+	if err := d.lockOp(context.Background()); err != nil {
+		return err
+	}
+	defer d.unlockOp()
 	_, confirm, err := d.transceive(CmdHandshake, nil, time.Second)
 	if err != nil {
 		return err
@@ -133,6 +170,10 @@ func (d *Device) Handshake() error {
 
 // CheckSensor runs the sensor self-test (0x36).
 func (d *Device) CheckSensor() error {
+	if err := d.lockOp(context.Background()); err != nil {
+		return err
+	}
+	defer d.unlockOp()
 	_, confirm, err := d.transceive(CmdCheckSensor, nil, time.Second)
 	if err != nil {
 		return err
@@ -146,6 +187,10 @@ func (d *Device) CheckSensor() error {
 // GetSN reads the 32-byte chip serial number (0x34). This unit returns the
 // serial right-aligned with leading zero bytes.
 func (d *Device) GetSN() ([]byte, error) {
+	if err := d.lockOp(context.Background()); err != nil {
+		return nil, err
+	}
+	defer d.unlockOp()
 	data, confirm, err := d.transceive(CmdGetSN, []byte{0}, time.Second)
 	if err != nil {
 		return nil, err
@@ -161,6 +206,10 @@ func (d *Device) GetSN() ([]byte, error) {
 
 // GetRandom reads a 32-bit random value from the module (0x14).
 func (d *Device) GetRandom() (uint32, error) {
+	if err := d.lockOp(context.Background()); err != nil {
+		return 0, err
+	}
+	defer d.unlockOp()
 	data, confirm, err := d.transceive(CmdGetRandom, nil, time.Second)
 	if err != nil {
 		return 0, err
@@ -177,6 +226,10 @@ func (d *Device) GetRandom() (uint32, error) {
 // WriteReg writes a module register (0x0E). Register 4 is reserved; IDs above
 // 9 are sent as 0x10..0x13, matching the vendor library.
 func (d *Device) WriteReg(reg, value uint8) error {
+	if err := d.lockOp(context.Background()); err != nil {
+		return err
+	}
+	defer d.unlockOp()
 	if reg == 4 || reg > 13 {
 		return fmt.Errorf("%w: register %d out of range", ErrInvalidParam, reg)
 	}
@@ -197,6 +250,10 @@ func (d *Device) WriteReg(reg, value uint8) error {
 // SetMatchLevel writes the security level (register 5) and returns the
 // confirmation code. Values are clamped to 1..5.
 func (d *Device) SetMatchLevel(level uint8) (uint8, error) {
+	if err := d.lockOp(context.Background()); err != nil {
+		return 0, err
+	}
+	defer d.unlockOp()
 	if level < 1 {
 		level = 1
 	}
