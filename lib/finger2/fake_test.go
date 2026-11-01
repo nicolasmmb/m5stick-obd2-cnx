@@ -14,6 +14,7 @@ var errFakeEmpty = errors.New("fake transport: empty")
 type fakeTransport struct {
 	mu      sync.Mutex
 	rx      []byte
+	cmds    []byte
 	handler func(cmd byte, payload []byte) (confirm byte, data []byte)
 }
 
@@ -31,6 +32,7 @@ func (f *fakeTransport) Write(p []byte) (int, error) {
 	ack := buildPacket(wire.PIDAck, append([]byte{confirm}, data...))
 
 	f.mu.Lock()
+	f.cmds = append(f.cmds, cmd)
 	f.rx = append(f.rx, ack...)
 	f.mu.Unlock()
 	return len(p), nil
@@ -51,6 +53,13 @@ func (f *fakeTransport) Buffered() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return len(f.rx)
+}
+
+// sent returns the command bytes the device wrote so far.
+func (f *fakeTransport) sent() []byte {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]byte(nil), f.cmds...)
 }
 
 func buildPacket(pid byte, payload []byte) []byte {

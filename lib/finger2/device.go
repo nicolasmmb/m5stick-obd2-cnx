@@ -132,8 +132,9 @@ func (d *Device) GetFirmwareVersion() (uint8, error) {
 	return data[0], nil
 }
 
-// Init wakes the module, reads its parameters and applies the defaults used by
-// this package: MatchLevel 5 and a breathing blue LED.
+// Init wakes the module, reads its parameters and sets a breathing blue LED.
+// It does not change the module match level; call SetMatchLevel explicitly if
+// the application needs a specific level.
 //
 // Some units answer 0xFE ("module not open") for a short while after waking,
 // so activation is retried before giving up.
@@ -195,9 +196,6 @@ func (d *Device) Init() error {
 	d.Status = params.Status
 	d.MatchLevel = params.MatchLevel
 
-	if _, err := d.SetMatchLevel(5); err == nil {
-		d.MatchLevel = 5
-	}
 	if count, err := d.ValidTemplates(); err == nil {
 		d.Templates = count
 	}

@@ -6,7 +6,13 @@ import (
 )
 
 func newFake(h func(cmd byte, payload []byte) (byte, []byte)) *Device {
-	return newDevice(&fakeTransport{handler: h})
+	d, _ := newFakeT(h)
+	return d
+}
+
+func newFakeT(h func(cmd byte, payload []byte) (byte, []byte)) (*Device, *fakeTransport) {
+	f := &fakeTransport{handler: h}
+	return newDevice(f), f
 }
 
 func TestInitReadsFirmwareAndParams(t *testing.T) {
@@ -25,6 +31,21 @@ func TestInitReadsFirmwareAndParams(t *testing.T) {
 	}
 	if d.MatchLevel != 5 {
 		t.Fatalf("match level = %d, want 5", d.MatchLevel)
+	}
+}
+
+func TestInitDoesNotForceMatchLevel(t *testing.T) {
+	d, f := newFakeT(defaultHandler)
+	if err := d.Init(); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	for _, cmd := range f.sent() {
+		if cmd == CmdWriteReg {
+			t.Fatal("Init sent CmdWriteReg; it must not change the match level")
+		}
+	}
+	if d.MatchLevel != 5 {
+		t.Fatalf("match level = %d, want the value from ReadSysParams (5)", d.MatchLevel)
 	}
 }
 

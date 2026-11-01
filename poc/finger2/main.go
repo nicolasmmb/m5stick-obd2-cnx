@@ -181,6 +181,9 @@ func main() {
 	println("finger2: FW", dev.Firmware, "capacity", dev.Capacity, "templates", dev.Templates, "matchlevel", dev.MatchLevel, "status", dev.Status)
 
 	_ = dev.SetWorkMode(1) // keep the module active while the screen is on
+	if _, err := dev.SetMatchLevel(5); err == nil {
+		println("finger2: match level set to 5")
+	}
 	if v, err := dev.GetSN(); err == nil {
 		sn, snOK = v, true
 	}
