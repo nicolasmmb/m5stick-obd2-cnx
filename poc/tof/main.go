@@ -5,6 +5,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"image/color"
 	"machine"
@@ -157,7 +158,10 @@ func main() {
 	online := false
 	var initErr string
 	for !online {
-		if err := dev.Init(); err != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		err := dev.InitContext(ctx)
+		cancel()
+		if err != nil {
 			initErr = err.Error()
 			println("tof: init", initErr)
 			drawOffline(initErr)

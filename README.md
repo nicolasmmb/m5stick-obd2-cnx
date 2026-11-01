@@ -537,7 +537,7 @@ mesmos registradores do VL53L0X):
 - Grove **I2C1: SDA=G32, SCL=G33**, endereço **0x29**, 400 kHz. O Grove é
   compartilhado com Encoder/GPS/Fingerprint2: use apenas um por vez.
 - Driver puro Go separado:
-  [M5Unit-ToF90-Go](https://github.com/nicolasmmb/M5Unit-ToF90-Go) v0.2.0 —
+  [M5Unit-ToF90-Go](https://github.com/nicolasmmb/M5Unit-ToF90-Go) v0.3.0 —
   **0 alocações por operação**, 3 transações I2C por amostra em modo contínuo.
 - Alcance 3–200 cm (200 cm só no modo **LONG**, com ambiente escuro), 1 mm de
   resolução, FoV 25° e emissor rotacionado 90°.

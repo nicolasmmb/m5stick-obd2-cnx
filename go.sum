@@ -33,6 +33,8 @@ github.com/nicolasmmb/M5Unit-ToF90-Go v0.1.2 h1:bV7cxXgIIgwwR5awBKewc51COpX7pEdf
 github.com/nicolasmmb/M5Unit-ToF90-Go v0.1.2/go.mod h1:KC+HK4fAEqvf0qkSEALejVwvpJqvfBrPPvUHj4jmQIk=
 github.com/nicolasmmb/M5Unit-ToF90-Go v0.2.0 h1:iQVs6RYQVCNCMnkQe1lvQLRu+1SntgGFZUYRk1QW7D8=
 github.com/nicolasmmb/M5Unit-ToF90-Go v0.2.0/go.mod h1:KC+HK4fAEqvf0qkSEALejVwvpJqvfBrPPvUHj4jmQIk=
+github.com/nicolasmmb/M5Unit-ToF90-Go v0.3.0 h1:ZXA9SvwQD55iczsfmy4Vvq4OLLGF1qvZcHiRTekQJF4=
+github.com/nicolasmmb/M5Unit-ToF90-Go v0.3.0/go.mod h1:KC+HK4fAEqvf0qkSEALejVwvpJqvfBrPPvUHj4jmQIk=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/saltosystems/winrt-go v0.0.0-20261015065339-8ef619c103a3 h1:oPCS6+YOyoj6u1cAHhFTWYzyJXrtQfc0P5E/bPjVtDo=
