@@ -48,6 +48,7 @@ type Device struct {
 	timeout   time.Duration
 	rxBuf     []byte
 	rxScratch []byte
+	txScratch []byte
 	wakeup    func([]byte)
 
 	// Firmware is the module firmware version (0xD7).

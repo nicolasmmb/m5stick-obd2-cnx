@@ -24,6 +24,15 @@ func TestBuildCommand(t *testing.T) {
 	}
 }
 
+func TestBuildCommandInto(t *testing.T) {
+	buf := make([]byte, 32)
+	got := BuildCommandInto(buf, 0xFFFFFFFF, 0x03, nil)
+	want := BuildCommand(0xFFFFFFFF, 0x03, nil)
+	if !bytes.Equal(got, want) {
+		t.Fatalf("BuildCommandInto = % X, want % X", got, want)
+	}
+}
+
 func TestBuildCommandWithPayload(t *testing.T) {
 	got := BuildCommand(0xFFFFFFFF, 0x02, []byte{0x01})
 	if len(got) != 13 {

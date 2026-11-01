@@ -126,14 +126,23 @@ func (d *Device) UploadTemplateAuto(size uint16) ([]byte, error) {
 		if remaining := int(size) - offset; remaining < templateChunk {
 			want = uint16(remaining)
 		}
-		data, actual, confirm, err := d.UploadTemplate(uint16(offset), want)
+		var payload [4]byte
+		payload[0] = byte(offset >> 8)
+		payload[1] = byte(offset)
+		payload[2] = byte(want >> 8)
+		payload[3] = byte(want)
+		data, confirm, err := d.transceiveAlias(CmdUploadTemplate, payload[:], 10*time.Second)
 		if err != nil {
 			return out, err
 		}
 		if confirm != ConfirmOK {
 			return out, Code(confirm)
 		}
-		out = append(out, data...)
+		if len(data) < 2 {
+			return out, ErrShortReply
+		}
+		actual := uint16(data[0])<<8 | uint16(data[1])
+		out = append(out, data[2:]...)
 		if actual == 0 {
 			break
 		}
@@ -153,12 +162,19 @@ func (d *Device) DownloadTemplateAuto(data []byte) error {
 	if len(data) > 0xFFFF {
 		return fmt.Errorf("%w: template larger than 65535 bytes", ErrInvalidParam)
 	}
+	payload := make([]byte, 4+templateWriteChunk)
 	for offset := 0; offset < len(data); {
 		n := templateWriteChunk
 		if len(data)-offset < n {
 			n = len(data) - offset
 		}
-		confirm, err := d.DownloadTemplate(uint16(offset), data[offset:offset+n])
+		payload[0] = byte(offset >> 8)
+		payload[1] = byte(offset)
+		payload[2] = byte(n >> 8)
+		payload[3] = byte(n)
+		copy(payload[4:4+n], data[offset:offset+n])
+
+		_, confirm, err := d.transceiveAlias(CmdDownloadTmpl, payload[:4+n], 10*time.Second)
 		if err != nil {
 			return err
 		}

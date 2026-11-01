@@ -210,9 +210,13 @@ func (d *Device) flush() {
 	}
 }
 
-// send serializes and writes a command packet.
+// send serializes and writes a command packet, reusing the TX scratch buffer.
 func (d *Device) send(cmd byte, payload []byte) error {
-	pkt := wire.BuildCommand(d.address, cmd, payload)
+	n := 12 + len(payload)
+	if cap(d.txScratch) < n {
+		d.txScratch = make([]byte, n)
+	}
+	pkt := wire.BuildCommandInto(d.txScratch[:n], d.address, cmd, payload)
 	_, err := d.uart.Write(pkt)
 	return err
 }
@@ -299,8 +303,18 @@ func ackData(pkt []byte) (confirm byte, data []byte) {
 	return wire.AckData(pkt)
 }
 
-// transceive sends a command and returns the ACK data and confirmation.
+// transceive sends a command and returns a private copy of the ACK data.
 func (d *Device) transceive(cmd byte, payload []byte, timeout time.Duration) ([]byte, byte, error) {
+	data, confirm, err := d.transceiveAlias(cmd, payload, timeout)
+	if len(data) > 0 {
+		data = append([]byte(nil), data...)
+	}
+	return data, confirm, err
+}
+
+// transceiveAlias is transceive without the copy. The returned data aliases the
+// device scratch buffer and must be consumed before the next command.
+func (d *Device) transceiveAlias(cmd byte, payload []byte, timeout time.Duration) ([]byte, byte, error) {
 	d.flush()
 	if err := d.send(cmd, payload); err != nil {
 		return nil, 0, err
@@ -310,10 +324,6 @@ func (d *Device) transceive(cmd byte, payload []byte, timeout time.Duration) ([]
 		return nil, 0, err
 	}
 	confirm, data := ackData(pkt)
-	// Copy ACK data so callers never hold a scratch-buffer alias.
-	if len(data) > 0 {
-		data = append([]byte(nil), data...)
-	}
 	return data, confirm, nil
 }
 

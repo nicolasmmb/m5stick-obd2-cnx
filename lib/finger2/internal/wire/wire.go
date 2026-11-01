@@ -32,6 +32,13 @@ func Checksum(b []byte) uint16 {
 //	EF 01 | address(4) | 01 | length(2) | cmd | payload | checksum(2)
 func BuildCommand(address uint32, cmd byte, payload []byte) []byte {
 	pkt := make([]byte, 12+len(payload))
+	return BuildCommandInto(pkt, address, cmd, payload)
+}
+
+// BuildCommandInto frames a command packet into pkt, which must have at least
+// 12+len(payload) bytes. It returns the used slice.
+func BuildCommandInto(pkt []byte, address uint32, cmd byte, payload []byte) []byte {
+	pkt = pkt[:12+len(payload)]
 	pkt[0] = Header0
 	pkt[1] = Header1
 	pkt[2] = byte(address >> 24)
