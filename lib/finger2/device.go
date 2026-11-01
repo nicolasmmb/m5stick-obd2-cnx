@@ -133,16 +133,24 @@ func (d *Device) GetFirmwareVersion() (uint8, error) {
 }
 
 // Init wakes the module, reads its parameters and sets a breathing blue LED.
-// It does not change the module match level; call SetMatchLevel explicitly if
-// the application needs a specific level.
-//
-// Some units answer 0xFE ("module not open") for a short while after waking,
-// so activation is retried before giving up.
+// It retries for up to 20 seconds; use InitWithTimeout for a custom deadline.
 func (d *Device) Init() error {
-	d.flush()
-	_, _, _ = d.transceive(CmdHandshake, nil, 500*time.Millisecond)
+	return d.InitWithTimeout(20 * time.Second)
+}
 
-	if data, confirm, err := d.transceive(CmdModuleStatus, nil, 800*time.Millisecond); err == nil && confirm == ConfirmOK && len(data) > 0 {
+// InitWithTimeout wakes the module, reads its parameters and sets a breathing
+// blue LED, retrying until timeout expires. It returns the last error when the
+// module does not become ready in time.
+//
+// Init does not change the module match level; call SetMatchLevel explicitly
+// if the application needs a specific level.
+func (d *Device) InitWithTimeout(timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+
+	d.flush()
+	_, _, _ = d.transceive(CmdHandshake, nil, minDuration(500*time.Millisecond, timeout))
+
+	if data, confirm, err := d.transceive(CmdModuleStatus, nil, minDuration(800*time.Millisecond, timeout)); err == nil && confirm == ConfirmOK && len(data) > 0 {
 		d.Status = uint16(data[0])
 	}
 
@@ -152,37 +160,51 @@ func (d *Device) Init() error {
 		ready    bool
 		lastErr  = ErrTimeout
 	)
-	for attempt := 0; attempt < 15; attempt++ {
-		_, confirm, err := d.transceive(CmdActivate, nil, 800*time.Millisecond)
+	for {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			break
+		}
+
+		_, confirm, err := d.transceive(CmdActivate, nil, minDuration(800*time.Millisecond, remaining))
 		switch {
 		case err != nil:
 			lastErr = err
 		case confirm != ConfirmOK:
 			lastErr = Code(confirm)
 		default:
-			time.Sleep(120 * time.Millisecond)
-			data, fwConfirm, fwErr := d.transceive(CmdFirmware, nil, time.Second)
-			switch {
-			case fwErr != nil:
-				lastErr = fwErr
-			case fwConfirm != ConfirmOK:
-				lastErr = Code(fwConfirm)
-			case len(data) < 1:
-				lastErr = ErrShortReply
-			default:
-				fw := data[0]
-				p, err := d.ReadSysParams()
-				if err == nil {
-					firmware, params, ready = fw, p, true
-				} else {
-					lastErr = err
+			sleepFor(minDuration(120*time.Millisecond, time.Until(deadline)))
+			if r := time.Until(deadline); r <= 0 {
+				break
+			} else {
+				data, fwConfirm, fwErr := d.transceive(CmdFirmware, nil, minDuration(time.Second, r))
+				switch {
+				case fwErr != nil:
+					lastErr = fwErr
+				case fwConfirm != ConfirmOK:
+					lastErr = Code(fwConfirm)
+				case len(data) < 1:
+					lastErr = ErrShortReply
+				default:
+					fw := data[0]
+					saved := d.timeout
+					if r := time.Until(deadline); r < saved {
+						d.timeout = r
+					}
+					p, err := d.ReadSysParams()
+					d.timeout = saved
+					if err == nil {
+						firmware, params, ready = fw, p, true
+					} else {
+						lastErr = err
+					}
 				}
 			}
 		}
 		if ready {
 			break
 		}
-		time.Sleep(200 * time.Millisecond)
+		sleepFor(minDuration(200*time.Millisecond, time.Until(deadline)))
 	}
 	if !ready {
 		return lastErr
@@ -201,6 +223,19 @@ func (d *Device) Init() error {
 	}
 	_ = d.ControlLED(LEDBreath, LEDBlue, LEDBlue, 0)
 	return nil
+}
+
+func minDuration(a, b time.Duration) time.Duration {
+	if b < a {
+		return b
+	}
+	return a
+}
+
+func sleepFor(d time.Duration) {
+	if d > 0 {
+		time.Sleep(d)
+	}
 }
 
 // RefreshTemplates re-reads the number of stored templates.

@@ -3,6 +3,7 @@ package finger2
 import (
 	"bytes"
 	"testing"
+	"time"
 )
 
 func newFake(h func(cmd byte, payload []byte) (byte, []byte)) *Device {
@@ -46,6 +47,19 @@ func TestInitDoesNotForceMatchLevel(t *testing.T) {
 	}
 	if d.MatchLevel != 5 {
 		t.Fatalf("match level = %d, want the value from ReadSysParams (5)", d.MatchLevel)
+	}
+}
+
+func TestInitWithTimeout(t *testing.T) {
+	d := newDevice(&fakeTransport{silent: true})
+	start := time.Now()
+	err := d.InitWithTimeout(100 * time.Millisecond)
+	elapsed := time.Since(start)
+	if err == nil {
+		t.Fatal("InitWithTimeout returned nil for a silent module")
+	}
+	if elapsed > time.Second {
+		t.Fatalf("InitWithTimeout took %v, want about 100ms", elapsed)
 	}
 }
 

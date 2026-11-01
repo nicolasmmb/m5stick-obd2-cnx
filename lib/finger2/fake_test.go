@@ -15,6 +15,7 @@ type fakeTransport struct {
 	mu      sync.Mutex
 	rx      []byte
 	cmds    []byte
+	silent  bool
 	handler func(cmd byte, payload []byte) (confirm byte, data []byte)
 }
 
@@ -25,6 +26,9 @@ func (f *fakeTransport) Write(p []byte) (int, error) {
 	cmd := p[9]
 	payload := p[10 : len(p)-2]
 
+	if f.silent {
+		return len(p), nil
+	}
 	confirm, data := byte(ConfirmOK), []byte(nil)
 	if f.handler != nil {
 		confirm, data = f.handler(cmd, payload)

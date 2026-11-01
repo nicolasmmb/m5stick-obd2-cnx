@@ -167,17 +167,23 @@ func main() {
 	dev.SetTimeout(900 * time.Millisecond)
 	println("finger2: uart ok")
 
+	// Bring the UI up before touching the module so a sleeping or missing
+	// sensor never blocks the boot.
+	setupButtons()
 	for {
-		println("finger2: init try")
-		if err := dev.Init(); err == nil {
+		err := dev.InitWithTimeout(1500 * time.Millisecond)
+		if err == nil {
 			println("finger2: init ok")
 			break
-		} else {
-			println("finger2 init:", err.Error())
 		}
-		drawWakePrompt()
+		println("finger2 init:", err.Error())
+		drawWakePrompt(err.Error())
 		time.Sleep(500 * time.Millisecond)
 	}
+	// Drop any button presses queued while the module was waking up.
+	atomic.StoreUint32(&btnA, 0)
+	atomic.StoreUint32(&btnB, 0)
+	atomic.StoreUint32(&btnC, 0)
 	println("finger2: FW", dev.Firmware, "capacity", dev.Capacity, "templates", dev.Templates, "matchlevel", dev.MatchLevel, "status", dev.Status)
 
 	_ = dev.SetWorkMode(1) // keep the module active while the screen is on
@@ -200,7 +206,6 @@ func main() {
 	pwm := machine.PWM0
 	_ = pwm.Configure(machine.PWMConfig{Period: 1_000_000_000 / 2700})
 
-	setupButtons()
 	mode = modeRead
 
 	status := modePrompt()
@@ -946,14 +951,17 @@ func initDisplay() {
 	})
 }
 
-func drawWakePrompt() {
+func drawWakePrompt(reason string) {
 	fb.clear()
 	tinyfont.WriteLine(&fb, &freemono.Bold9pt7b, 4, 22, "FINGER2", cyan)
 	fb.fillRect(0, 26, screenW, 1, darkGray)
-	tinyfont.WriteLine(&fb, &freemono.Bold9pt7b, 4, 58, "TOQUE NO SENSOR", yellow)
-	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 78, "para acordar o modulo", white)
-	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 94, "o LED ring deve acender", gray)
-	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 120, "Grove G32/G33  115200 8N1", gray)
+	tinyfont.WriteLine(&fb, &freemono.Bold9pt7b, 4, 56, "SENSOR OFFLINE", red)
+	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 76, "encoste o dedo para acordar", white)
+	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 92, "o LED ring deve acender", gray)
+	if reason != "" {
+		tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 110, reason, gray)
+	}
+	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 126, "Grove G32/G33  115200 8N1", gray)
 	fb.flush()
 }
 
