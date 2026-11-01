@@ -92,7 +92,10 @@ const (
 
 	DefaultAddress = 0xFFFFFFFF
 
-	imageBytes    = 8230
+	// Fingerprint image: 80x208 pixels, 4 bits per pixel.
+	ImageWidth    = 80
+	ImageHeight   = 208
+	imageBytes    = ImageWidth * ImageHeight / 2
 	templateBytes = 7262
 	infBytes      = 512
 )
@@ -401,9 +404,11 @@ func (d *Device) readData(expected int, timeout time.Duration) ([]byte, error) {
 			return data, err
 		}
 		if pkt[6] == pidData || pkt[6] == pidEndData {
-			confirm, chunk := ackData(pkt)
-			_ = confirm
-			data = append(data, chunk...)
+			// Data/end packets have no confirmation byte: payload starts at 9.
+			end := len(pkt) - 2
+			if end > 9 {
+				data = append(data, pkt[9:end]...)
+			}
 			if pkt[6] == pidEndData {
 				break
 			}
@@ -742,7 +747,13 @@ func (d *Device) UpImage() ([]byte, error) {
 	if confirm != ConfirmOK {
 		return nil, Code(confirm)
 	}
-	return d.readData(imageBytes, 10*time.Second)
+	// The module terminates the transfer with an end-data packet, so read
+	// until it arrives instead of trusting a fixed size.
+	data, err := d.readData(imageBytes+1024, 10*time.Second)
+	if len(data) > 0 {
+		return data, nil
+	}
+	return nil, err
 }
 
 func (d *Device) UploadTemplate(offset, size uint16) ([]byte, uint16, uint8, error) {
