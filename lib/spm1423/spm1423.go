@@ -1,3 +1,5 @@
+//go:build esp32
+
 // Package spm1423 implements a PDM RX driver for the SPM1423 microphone
 // found on the M5StickC Plus2, using the ESP32 classic I2S0 peripheral.
 //

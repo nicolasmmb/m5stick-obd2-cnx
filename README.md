@@ -11,6 +11,8 @@ POC para validar TinyGo, Wi-Fi, BLE e o LCD do M5StickC Plus2 antes de integrar 
 | B2 | BLE scan (bluetooth v0.17.0) | ✅ 10–14 devices, nomes recebidos |
 | B3 | Tela ST7789 + Wi-Fi + BLE juntos | ✅ 25–36 APs / 12–16 BLE |
 | B4 | Menu interativo de sensores na tela | ✅ IMU, RTC, bateria, botões, buzzer, LED/IR |
+| B5 | Lib SPM1423 PDM (I2S0 + DMA) | ✅ RMS/dBFS; tom de 2,7 kHz detectado |
+| B6 | Espectrograma FFT na tela | ✅ FFT 512 + waterfall 120x50 |
 | C | OBD2 | ⏸️ bloqueado: adaptador ELM327 Bluetooth Classic |
 
 ## Ambiente
@@ -36,17 +38,20 @@ poc/wifi-scan/    # scan de redes Wi-Fi (serial)
 poc/ble-scan/     # scan BLE com nomes (serial)
 poc/display-scan/ # tela: Wi-Fi + BLE, abas e navegação por botões
 poc/sensors/      # menu interativo de sensores na tela
+poc/mic-pdm/      # teste de RMS/dBFS do microfone na serial
+lib/spm1423/      # driver PDM do SPM1423 usando I2S0 + DMA
 ```
 
 ## Comandos
 
 ```bash
-make build       # compila os cinco POCs e mostra tamanho
+make build       # compila os seis POCs e mostra tamanho
 make hello       # flash + monitor
 make wifi        # flash + monitor
 make ble         # flash + monitor
 make display     # flash + monitor (POC da tela)
 make sensors     # flash + monitor (POC de sensores)
+make mic         # flash + monitor (POC do microfone)
 make monitor     # monitor serial apenas
 ```
 
@@ -65,7 +70,8 @@ tinygo flash -target=m5stick-c -port=/dev/cu.usbserial-XXXX \
 | ble-scan | 228 KB | 17,8 KB |
 | wifi-scan | 472 KB | 41,6 KB |
 | display-scan | 581 KB | 52,0 KB |
-| sensors | 121 KB | 12,9 KB + 65 KB do framebuffer |
+| sensors | 142 KB | 31 KB + 65 KB do framebuffer |
+| mic-pdm | 23 KB | 4,8 KB + 1 KB de DMA |
 
 O BLE no ESP32 clássico reserva ainda 64 KB fixos de RAM para o controlador.
 
@@ -96,7 +102,8 @@ Menu interativo de 7 páginas, renderizado em framebuffer (sem piscar):
 | BOTOES | estado e contador de A/B/C |
 | BUZZER | tom de 2700 Hz em G2 |
 | LED / IR | estado do LED vermelho/IR em G19 |
-| MICROFONE | SPM1423 PDM — presente, mas sem driver no TinyGo |
+| MICROFONE | SPM1423 PDM ao vivo: RMS, dBFS e barra de nível |
+| ESPECTRO | FFT 512 pontos, waterfall 0–7,8 kHz e escala de cor dBFS |
 
 Navegação:
 
@@ -108,8 +115,57 @@ Notas técnicas:
 
 - O ADC do ESP32 exige `machine.InitADC()` antes do `Configure`.
 - O framebuffer RGB565 de 240x135 usa ~65 KB de RAM.
-- O microfone SPM1423 é PDM (G34/G0); o ESP32 clássico não tem driver I2S
-  no TinyGo, então a página mostra o status em vez de amostras.
+- O microfone usa a lib `lib/spm1423` (I2S0 + DMA); na página MICROFONE,
+  **C** toca um bip de 2,7 kHz para validar o nível.
+- A página ESPECTRO usa FFT de 512 pontos com janela Hann:
+  - 120 colunas (tempo) × 50 linhas (frequência), atualização ~10 Hz.
+  - Eixo de 0 a ~7,8 kHz; a cor vai de azul (fraco) a vermelho (forte).
+  - **C** toca o bip e desenha uma linha vertical em ~2,7 kHz.
+- O buzzer usa PWM (LEDC) em G2, porque o driver bit-banged não é confiável
+  com o scheduler do ESP32.
+
+## Lib do microfone (`lib/spm1423`)
+
+Driver PDM para o SPM1423 do M5StickC Plus2. O TinyGo não implementa
+`machine.I2S` no ESP32 clássico, então a lib configura o periférico **I2S0**
+diretamente e usa o conversor **PDM→PCM em hardware**.
+
+Uso:
+
+```go
+mic := spm1423.New(machine.GPIO0, machine.GPIO34)
+err := mic.Configure(spm1423.Config{BufferSize: 512})
+mic.Start()
+defer mic.Stop()
+
+buf := make([]int16, 512)
+n, err := mic.Read(buf)
+rms := spm1423.RMS(buf[:n])
+dbfs := spm1423.DBFS(rms)
+```
+
+Detalhes:
+
+- Clock PDM em **G0** (`I2S0I_WS_OUT`), dados em **G34** (`I2S0I_DATA_IN15`).
+- MCLK 8 MHz (160 MHz / 20), BCLK 1 MHz, amostragem ~**15,625 kHz**.
+- `RXEOF_NUM` configurado para o tamanho do buffer; DMA com descritor de 12 bytes.
+- `RMS` remove o offset DC; `DBFS` é relativo ao fundo de escala de 16 bits.
+- `Read` bloqueia até o buffer DMA encher (512 amostras ≈ 33 ms).
+
+Validação real com um tom de **2,7 kHz** no buzzer:
+
+```
+silêncio:  rms ~16   dbfs -66
+bip:       rms ~6400 dbfs -14
+```
+
+Cuidados:
+
+- O valor em dBFS **não é SPL calibrado**; para SPL de verdade é preciso
+  calibrar com um medidor de referência.
+- O microfone PDM tem offset DC; use sempre `RMS`/`DBFS` em vez do valor bruto.
+- A taxa é nominal de 15,625 kHz (divisor inteiro). Para 16 kHz exatos seria
+  preciso usar divisor fracionário no `CLKM_CONF`.
 
 ## Zed (autocomplete e diagnósticos)
 

@@ -2,7 +2,7 @@ PORT ?= /dev/cu.usbserial-5A6C0570831
 TARGET ?= m5stick-c
 TINYGO ?= tinygo
 
-.PHONY: build check hello wifi ble display sensors monitor clean
+.PHONY: build check hello wifi ble display sensors mic monitor clean
 
 build:
 	$(TINYGO) build -target=$(TARGET) -size short -o /tmp/m5-hello.bin ./poc/hello
@@ -10,9 +10,10 @@ build:
 	$(TINYGO) build -target=$(TARGET) -size short -o /tmp/m5-ble-scan.bin ./poc/ble-scan
 	$(TINYGO) build -target=$(TARGET) -size short -o /tmp/m5-display-scan.bin ./poc/display-scan
 	$(TINYGO) build -target=$(TARGET) -size short -o /tmp/m5-sensors.bin ./poc/sensors
+	$(TINYGO) build -target=$(TARGET) -size short -o /tmp/m5-mic-pdm.bin ./poc/mic-pdm
 
 check:
-	@for f in ./poc/hello/main.go ./poc/wifi-scan/main.go ./poc/ble-scan/main.go ./poc/display-scan/main.go ./poc/sensors/main.go; do \
+	@for f in ./poc/hello/main.go ./poc/wifi-scan/main.go ./poc/ble-scan/main.go ./poc/display-scan/main.go ./poc/sensors/main.go ./poc/mic-pdm/main.go ./lib/spm1423/spm1423.go; do \
 		echo "gopls check $$f"; \
 		./scripts/gopls-tinygo.sh check "$$f"; \
 	done
@@ -31,6 +32,9 @@ display:
 
 sensors:
 	$(TINYGO) flash -target=$(TARGET) -port=$(PORT) -size short -monitor ./poc/sensors
+
+mic:
+	$(TINYGO) flash -target=$(TARGET) -port=$(PORT) -size short -monitor ./poc/mic-pdm
 
 monitor:
 	$(TINYGO) monitor -port=$(PORT)
