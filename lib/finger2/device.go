@@ -1,11 +1,7 @@
-//go:build esp32
-
 package finger2
 
 import (
 	"time"
-
-	"machine"
 
 	"m5stick-obd2-cnx/lib/finger2/internal/wire"
 )
@@ -43,7 +39,7 @@ type MatchResult struct {
 // Fields updated by Init are informational copies of the module state. They
 // are safe to read from the goroutine that owns the Device.
 type Device struct {
-	uart      *machine.UART
+	transport Transport
 	address   uint32
 	timeout   time.Duration
 	rxBuf     []byte
@@ -67,16 +63,6 @@ type Device struct {
 	MatchLevel uint16
 	// Status is the module status word.
 	Status uint16
-}
-
-// New returns a Device bound to uart. Configure the UART for 115200 8N1 before
-// calling Init.
-func New(uart *machine.UART) *Device {
-	return &Device{
-		uart:    uart,
-		address: DefaultAddress,
-		timeout: 1500 * time.Millisecond,
-	}
 }
 
 // SetTimeout changes the default command timeout.

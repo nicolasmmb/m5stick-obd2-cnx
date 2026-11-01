@@ -1,5 +1,3 @@
-//go:build esp32
-
 package finger2
 
 import (

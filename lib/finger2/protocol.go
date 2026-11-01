@@ -1,5 +1,3 @@
-//go:build esp32
-
 package finger2
 
 import (
@@ -205,8 +203,8 @@ func codeName(c uint8) string {
 // flush discards any pending bytes from the UART.
 func (d *Device) flush() {
 	d.rxBuf = nil
-	for d.uart.Buffered() > 0 {
-		_, _ = d.uart.ReadByte()
+	for d.transport.Buffered() > 0 {
+		_, _ = d.transport.ReadByte()
 	}
 }
 
@@ -217,7 +215,7 @@ func (d *Device) send(cmd byte, payload []byte) error {
 		d.txScratch = make([]byte, n)
 	}
 	pkt := wire.BuildCommandInto(d.txScratch[:n], d.address, cmd, payload)
-	_, err := d.uart.Write(pkt)
+	_, err := d.transport.Write(pkt)
 	return err
 }
 
@@ -234,8 +232,8 @@ func (d *Device) readPacket(timeout time.Duration) ([]byte, error) {
 	deadline := time.Now().Add(timeout)
 
 	for time.Now().Before(deadline) {
-		for d.uart.Buffered() > 0 {
-			b, err := d.uart.ReadByte()
+		for d.transport.Buffered() > 0 {
+			b, err := d.transport.ReadByte()
 			if err != nil {
 				break
 			}

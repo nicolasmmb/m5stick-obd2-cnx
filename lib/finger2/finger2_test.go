@@ -1,0 +1,169 @@
+package finger2
+
+import (
+	"bytes"
+	"testing"
+)
+
+func newFake(h func(cmd byte, payload []byte) (byte, []byte)) *Device {
+	return newDevice(&fakeTransport{handler: h})
+}
+
+func TestInitReadsFirmwareAndParams(t *testing.T) {
+	d := newFake(defaultHandler)
+	if err := d.Init(); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	if d.Firmware != 1 {
+		t.Fatalf("firmware = %d, want 1", d.Firmware)
+	}
+	if d.Capacity != 100 {
+		t.Fatalf("capacity = %d, want 100", d.Capacity)
+	}
+	if d.Templates != 2 {
+		t.Fatalf("templates = %d, want 2", d.Templates)
+	}
+	if d.MatchLevel != 5 {
+		t.Fatalf("match level = %d, want 5", d.MatchLevel)
+	}
+}
+
+func TestReadSysParamsFields(t *testing.T) {
+	d := newFake(defaultHandler)
+	p, err := d.ReadSysParams()
+	if err != nil {
+		t.Fatalf("ReadSysParams: %v", err)
+	}
+	if p.Status != 0x000C || p.Capacity != 100 || p.MatchLevel != 5 {
+		t.Fatalf("unexpected params: %+v", p)
+	}
+	if p.PacketSize != 2 || p.BaudRate != 6 || p.Address != 0xFFFFFFFF {
+		t.Fatalf("unexpected params: %+v", p)
+	}
+}
+
+func TestGetSNReturnsCopy(t *testing.T) {
+	sn := bytes.Repeat([]byte{0xAA}, 32)
+	d := newFake(func(cmd byte, payload []byte) (byte, []byte) {
+		if cmd == CmdGetSN {
+			return ConfirmOK, sn
+		}
+		return defaultHandler(cmd, payload)
+	})
+
+	got, err := d.GetSN()
+	if err != nil {
+		t.Fatalf("GetSN: %v", err)
+	}
+	// Any command reuses the read scratch. A returned copy must survive it.
+	if _, err := d.ReadSysParams(); err != nil {
+		t.Fatalf("ReadSysParams: %v", err)
+	}
+	if !bytes.Equal(got, sn) {
+		t.Fatalf("GetSN aliased the scratch: % X", got)
+	}
+}
+
+func TestReadNotepadReturnsCopy(t *testing.T) {
+	note := make([]byte, 32)
+	for i := range note {
+		note[i] = byte(i + 1)
+	}
+	d := newFake(func(cmd byte, payload []byte) (byte, []byte) {
+		if cmd == CmdReadNotepad {
+			return ConfirmOK, note
+		}
+		return defaultHandler(cmd, payload)
+	})
+
+	got, err := d.ReadNotepad(1)
+	if err != nil {
+		t.Fatalf("ReadNotepad: %v", err)
+	}
+	if _, err := d.ReadSysParams(); err != nil {
+		t.Fatalf("ReadSysParams: %v", err)
+	}
+	if !bytes.Equal(got, note) {
+		t.Fatalf("ReadNotepad aliased the scratch: % X", got)
+	}
+}
+
+func TestReadIndexTableReturnsCopy(t *testing.T) {
+	table := bytes.Repeat([]byte{0x55}, 32)
+	d := newFake(func(cmd byte, payload []byte) (byte, []byte) {
+		if cmd == CmdReadIndexTable {
+			return ConfirmOK, table
+		}
+		return defaultHandler(cmd, payload)
+	})
+
+	got, err := d.ReadIndexTable(0)
+	if err != nil {
+		t.Fatalf("ReadIndexTable: %v", err)
+	}
+	if _, err := d.ReadSysParams(); err != nil {
+		t.Fatalf("ReadSysParams: %v", err)
+	}
+	if !bytes.Equal(got, table) {
+		t.Fatalf("ReadIndexTable aliased the scratch: % X", got)
+	}
+}
+
+func TestUploadTemplateReturnsCopy(t *testing.T) {
+	tpl := []byte{0xDE, 0xAD, 0xBE, 0xEF}
+	d := newFake(func(cmd byte, payload []byte) (byte, []byte) {
+		if cmd == CmdUploadTemplate {
+			// ACK data is actualSize(2) + template bytes.
+			return ConfirmOK, append([]byte{0x00, byte(len(tpl))}, tpl...)
+		}
+		return defaultHandler(cmd, payload)
+	})
+
+	got, actual, _, err := d.UploadTemplate(0, uint16(len(tpl)))
+	if err != nil {
+		t.Fatalf("UploadTemplate: %v", err)
+	}
+	if actual != uint16(len(tpl)) {
+		t.Fatalf("actual = %d, want %d", actual, len(tpl))
+	}
+	if _, err := d.ReadSysParams(); err != nil {
+		t.Fatalf("ReadSysParams: %v", err)
+	}
+	if !bytes.Equal(got, tpl) {
+		t.Fatalf("UploadTemplate aliased the scratch: % X", got)
+	}
+}
+
+func TestSearchParsesResult(t *testing.T) {
+	d := newFake(func(cmd byte, payload []byte) (byte, []byte) {
+		if cmd == CmdSearch {
+			return ConfirmOK, []byte{0x00, 0x03, 0x01, 0x2C}
+		}
+		return defaultHandler(cmd, payload)
+	})
+
+	res, err := d.Search(1, 0, 100)
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if !res.Matched || res.Page != 3 || res.Score != 300 {
+		t.Fatalf("unexpected result: %+v", res)
+	}
+}
+
+func TestCaptureNoFinger(t *testing.T) {
+	d := newFake(func(cmd byte, payload []byte) (byte, []byte) {
+		if cmd == CmdGetImage {
+			return ConfirmNoFinger, nil
+		}
+		return defaultHandler(cmd, payload)
+	})
+
+	detected, confirm, err := d.Capture()
+	if err != nil {
+		t.Fatalf("Capture: %v", err)
+	}
+	if detected || confirm != ConfirmNoFinger {
+		t.Fatalf("detected=%v confirm=%#02x, want false/0x02", detected, confirm)
+	}
+}

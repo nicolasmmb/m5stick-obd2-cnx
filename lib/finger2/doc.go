@@ -1,5 +1,3 @@
-//go:build esp32
-
 // Package finger2 drives the M5Stack Unit Fingerprint2 (A-K323CP) over UART.
 //
 // The implementation is pure Go: it does not use C, C++, CGo, Arduino or the
