@@ -23,6 +23,8 @@ github.com/nicolasmmb/M5Unit-GPS-Go v0.2.1 h1:s7RnUZPOwU6DSYabO5KxpFrnmQcijXp5Em
 github.com/nicolasmmb/M5Unit-GPS-Go v0.2.1/go.mod h1:0MmcFY6GXIGdkiN+nKIbPP/PzpmZebpZSW5zA2fFp5A=
 github.com/nicolasmmb/M5Unit-GPS-Go v0.3.0 h1:nDGDIrdffSJHtC5HDnbgY3n0bExRAvPP7KtRaWW42U0=
 github.com/nicolasmmb/M5Unit-GPS-Go v0.3.0/go.mod h1:0MmcFY6GXIGdkiN+nKIbPP/PzpmZebpZSW5zA2fFp5A=
+github.com/nicolasmmb/M5Unit-GPS-Go v0.3.1 h1:nYdZ9uqdA+ZC6Mn0KW1tTm1xqogk3Ze0ma8OfsBr8vE=
+github.com/nicolasmmb/M5Unit-GPS-Go v0.3.1/go.mod h1:0MmcFY6GXIGdkiN+nKIbPP/PzpmZebpZSW5zA2fFp5A=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/saltosystems/winrt-go v0.0.0-20261015065339-8ef619c103a3 h1:oPCS6+YOyoj6u1cAHhFTWYzyJXrtQfc0P5E/bPjVtDo=

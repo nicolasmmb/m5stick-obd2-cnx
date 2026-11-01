@@ -510,7 +510,7 @@ Tela de teste do GPS M5Stack (**v1.1**, AT6668 + MAX2659):
 - UART do Grove: **TX=G32, RX=G33**; **115200 8N1** (o U032 antigo usa 9600;
   a tela testa 115200 e cai para 9600 se não houver NMEA).
 - Driver puro Go separado:
-  [M5Unit-GPS-Go](https://github.com/nicolasmmb/M5Unit-GPS-Go) v0.3.0 —
+  [M5Unit-GPS-Go](https://github.com/nicolasmmb/M5Unit-GPS-Go) v0.3.1 —
   parser NMEA com **0 alocações por sentença**.
 - NMEA: `GGA` (satélites, qualidade, altitude), `RMC` (UTC, lat/lon, velocidade,
   rumo), `GSV` (satélites em vista e melhor SNR, somados por constelação) e
