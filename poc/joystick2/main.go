@@ -161,6 +161,10 @@ func main() {
 		println("joystick2: offline")
 		time.Sleep(2 * time.Second)
 	}
+	// This unit's Y axis is positive downwards (stick up reads -4095), which is
+	// also what the official driver reports. Invert Y so the crosshair and the
+	// numeric value follow the physical stick direction.
+	dev.SetOrientation(joystick2.Orientation{InvertY: true})
 	fw, _ := dev.FirmwareVersion()
 	boot, _ := dev.BootloaderVersion()
 	_ = dev.SetLED(presets[colorIndex].c)

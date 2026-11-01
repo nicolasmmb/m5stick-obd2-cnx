@@ -571,6 +571,9 @@ Tela de teste do **Unit Joystick2** (SKU U024-V2, joystick Hall + STM32G030):
   a 100 kHz rodou a 35–43 Hz sem erros.
 - Validado no hardware: X/Y chegam a **±4095**, botão Z registra, ADC de 16 bits
   cobre a faixa e os presets de cor/brilho do LED funcionam.
+- **Y do módulo é positivo para baixo** (stick para cima → `-4095`, igual à lib
+  oficial). O POC aplica `Orientation{InvertY: true}` para a mira subir junto
+  com o stick; a lib não altera o sinal por conta própria.
 - A calibração/deadzone é **somente leitura** no POC (escritas vão para a
   flash do STM32; a lib expõe `SetCalibration`/`SetDeadzone*`).
 
