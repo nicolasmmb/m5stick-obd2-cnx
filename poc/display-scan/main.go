@@ -22,6 +22,8 @@ const (
 	lineHeight  = 10
 	visibleRows = 9
 
+	footerY = 132
+
 	bleScanTime = 8 * time.Second
 	scanPause   = 5 * time.Second
 )
@@ -66,7 +68,7 @@ func main() {
 
 	initButtons()
 	initDisplay()
-	render()
+	renderAll()
 	time.Sleep(500 * time.Millisecond)
 
 	println("display-scan: initializing WiFi...")
@@ -98,33 +100,31 @@ func main() {
 	bleCh := make(chan []bleInfo, 1)
 	go scanLoop(wifiCh, bleCh)
 
-	render()
+	renderAll()
 	for {
-		dirty := false
-
 		select {
 		case aps := <-wifiCh:
 			wifiList = aps
 			wifiSel = clamp(wifiSel, len(wifiList))
 			wifiScroll = adjustScroll(wifiSel, wifiScroll, len(wifiList))
 			println("wifi:", len(wifiList), "APs")
-			dirty = true
+			renderHeader()
+			if tab == 0 {
+				renderListFull()
+			}
 		case devs := <-bleCh:
 			bleList = devs
 			bleSel = clamp(bleSel, len(bleList))
 			bleScroll = adjustScroll(bleSel, bleScroll, len(bleList))
 			println("ble:", len(bleList), "devices")
-			dirty = true
+			renderHeader()
+			if tab == 1 {
+				renderListFull()
+			}
 		default:
 		}
 
-		if handleButtons() {
-			dirty = true
-		}
-		if dirty {
-			render()
-		}
-
+		handleButtons()
 		time.Sleep(20 * time.Millisecond)
 	}
 }
@@ -212,48 +212,69 @@ func initButtons() {
 	btnAErr = set(machine.GPIO37, &btnA)
 	btnBErr = set(machine.GPIO39, &btnB)
 	btnCErr = set(machine.GPIO35, &btnC)
-
-	println("buttons idle A/B/C:",
-		machine.GPIO37.Get(), machine.GPIO39.Get(), machine.GPIO35.Get())
 }
 
-func handleButtons() bool {
-	changed := false
+func handleButtons() {
 	now := time.Now()
 
 	if atomic.SwapUint32(&btnA, 0) > 0 && now.Sub(lastA) > 200*time.Millisecond {
 		lastA = now
 		tab = 1 - tab
 		println("button A: tab", tab)
-		changed = true
+		renderHeader()
+		renderListFull()
 	}
 	if atomic.SwapUint32(&btnB, 0) > 0 && now.Sub(lastB) > 200*time.Millisecond {
 		lastB = now
-		moveSelection(-1)
 		println("button B: up")
-		changed = true
+		moveSelection(-1)
 	}
 	if atomic.SwapUint32(&btnC, 0) > 0 && now.Sub(lastC) > 200*time.Millisecond {
 		lastC = now
-		moveSelection(1)
 		println("button C: down")
-		changed = true
+		moveSelection(1)
 	}
-	return changed
 }
 
 func moveSelection(delta int) {
+	n := listLen()
+	if n == 0 {
+		return
+	}
+
+	oldSel := listSel()
+	oldScroll := listScroll()
+	newSel := clamp(oldSel+delta, n)
+	newScroll := adjustScroll(newSel, oldScroll, n)
+
+	if newSel == oldSel && newScroll == oldScroll {
+		return
+	}
+
 	if tab == 0 {
-		wifiSel = clamp(wifiSel+delta, len(wifiList))
-		wifiScroll = adjustScroll(wifiSel, wifiScroll, len(wifiList))
+		wifiSel, wifiScroll = newSel, newScroll
 	} else {
-		bleSel = clamp(bleSel+delta, len(bleList))
-		bleScroll = adjustScroll(bleSel, bleScroll, len(bleList))
+		bleSel, bleScroll = newSel, newScroll
+	}
+
+	if newScroll != oldScroll {
+		// The visible window moved: redraw the list area only.
+		renderListFull()
+	} else {
+		// Same window: only the old and new selected rows change.
+		renderRow(oldSel, false)
+		renderRow(newSel, true)
 	}
 }
 
-func render() {
-	display.FillScreen(black)
+func renderAll() {
+	renderHeader()
+	renderListFull()
+	renderFooter()
+}
+
+func renderHeader() {
+	display.FillRectangle(0, 0, screenW, 21, black)
 
 	wifiColor := gray
 	bleColor := gray
@@ -274,47 +295,86 @@ func render() {
 		display.FillRectangle(150, 17, 40, 2, green)
 	}
 	display.FillRectangle(0, 20, screenW, 1, gray)
-
-	if tab == 0 {
-		drawList(len(wifiList), wifiSel, wifiScroll, func(i int) string {
-			ap := wifiList[i]
-			return strconv.Itoa(ap.RSSI) + " " + truncate(ap.SSID, 24)
-		})
-	} else {
-		drawList(len(bleList), bleSel, bleScroll, func(i int) string {
-			dev := bleList[i]
-			name := dev.name
-			if name == "" {
-				name = "?" + dev.addr[len(dev.addr)-5:]
-			}
-			return strconv.Itoa(int(dev.rssi)) + " " + truncate(name, 24)
-		})
-	}
-
-	tinyfont.WriteLine(&display, &proggy.TinySZ8pt7b, 4, 132,
-		"A:tab  B:up  C:down", gray)
 }
 
-func drawList(n, sel, scroll int, text func(int) string) {
+func renderListFull() {
+	n := listLen()
+	sel := listSel()
+	scroll := listScroll()
+
+	// Redraw row by row instead of clearing the whole list area first. This
+	// avoids the full-screen "blink" when switching tabs or scrolling.
 	for row := 0; row < visibleRows; row++ {
 		idx := scroll + row
-		if idx >= n {
-			break
-		}
 		y := int16(32 + row*lineHeight)
-		fg := white
-		if idx == sel {
-			display.FillRectangle(0, y-8, screenW, lineHeight, white)
-			fg = black
+		if idx >= n {
+			display.FillRectangle(0, y-8, screenW, lineHeight, black)
+			continue
 		}
-		tinyfont.WriteLine(&display, &proggy.TinySZ8pt7b, 4, y, text(idx), fg)
+		renderRow(idx, idx == sel)
 	}
+}
+
+func renderRow(idx int, selected bool) {
+	row := idx - listScroll()
+	if row < 0 || row >= visibleRows {
+		return
+	}
+
+	y := int16(32 + row*lineHeight)
+	bg, fg := black, white
+	if selected {
+		bg, fg = white, black
+	}
+
+	display.FillRectangle(0, y-8, screenW, lineHeight, bg)
+	tinyfont.WriteLine(&display, &proggy.TinySZ8pt7b, 4, y, listText(idx), fg)
+}
+
+func renderFooter() {
+	tinyfont.WriteLine(&display, &proggy.TinySZ8pt7b, 4, footerY,
+		"A:tab  B:up  C:down", gray)
 }
 
 func drawFullStatus(title, msg string, c color.RGBA) {
 	display.FillScreen(black)
 	tinyfont.WriteLine(&display, &freemono.Bold9pt7b, 4, 30, title, c)
 	tinyfont.WriteLine(&display, &proggy.TinySZ8pt7b, 4, 50, truncate(msg, 29), white)
+}
+
+func listLen() int {
+	if tab == 0 {
+		return len(wifiList)
+	}
+	return len(bleList)
+}
+
+func listSel() int {
+	if tab == 0 {
+		return wifiSel
+	}
+	return bleSel
+}
+
+func listScroll() int {
+	if tab == 0 {
+		return wifiScroll
+	}
+	return bleScroll
+}
+
+func listText(i int) string {
+	if tab == 0 {
+		ap := wifiList[i]
+		return strconv.Itoa(ap.RSSI) + " " + truncate(ap.SSID, 24)
+	}
+
+	dev := bleList[i]
+	name := dev.name
+	if name == "" {
+		name = "?" + dev.addr[len(dev.addr)-5:]
+	}
+	return strconv.Itoa(int(dev.rssi)) + " " + truncate(name, 24)
 }
 
 func scanBLE(d time.Duration) []bleInfo {

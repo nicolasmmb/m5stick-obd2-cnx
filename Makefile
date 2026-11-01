@@ -2,16 +2,17 @@ PORT ?= /dev/cu.usbserial-5A6C0570831
 TARGET ?= m5stick-c
 TINYGO ?= tinygo
 
-.PHONY: build check hello wifi ble display monitor clean
+.PHONY: build check hello wifi ble display sensors monitor clean
 
 build:
 	$(TINYGO) build -target=$(TARGET) -size short -o /tmp/m5-hello.bin ./poc/hello
 	$(TINYGO) build -target=$(TARGET) -size short -o /tmp/m5-wifi-scan.bin ./poc/wifi-scan
 	$(TINYGO) build -target=$(TARGET) -size short -o /tmp/m5-ble-scan.bin ./poc/ble-scan
 	$(TINYGO) build -target=$(TARGET) -size short -o /tmp/m5-display-scan.bin ./poc/display-scan
+	$(TINYGO) build -target=$(TARGET) -size short -o /tmp/m5-sensors.bin ./poc/sensors
 
 check:
-	@for f in ./poc/hello/main.go ./poc/wifi-scan/main.go ./poc/ble-scan/main.go ./poc/display-scan/main.go; do \
+	@for f in ./poc/hello/main.go ./poc/wifi-scan/main.go ./poc/ble-scan/main.go ./poc/display-scan/main.go ./poc/sensors/main.go; do \
 		echo "gopls check $$f"; \
 		./scripts/gopls-tinygo.sh check "$$f"; \
 	done
@@ -27,6 +28,9 @@ ble:
 
 display:
 	$(TINYGO) flash -target=$(TARGET) -port=$(PORT) -size short -monitor ./poc/display-scan
+
+sensors:
+	$(TINYGO) flash -target=$(TARGET) -port=$(PORT) -size short -monitor ./poc/sensors
 
 monitor:
 	$(TINYGO) monitor -port=$(PORT)
