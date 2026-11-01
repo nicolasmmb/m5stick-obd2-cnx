@@ -11,6 +11,8 @@ require github.com/nicolasmmb/M5Unit-Encoder-Go v0.1.2
 
 require github.com/nicolasmmb/M5Unit-GPS-Go v0.3.1
 
+require github.com/nicolasmmb/M5Unit-ToF90-Go v0.1.2 // indirect
+
 require (
 	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
