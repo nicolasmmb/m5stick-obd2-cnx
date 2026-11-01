@@ -562,7 +562,7 @@ Tela de teste do **Unit Joystick2** (SKU U024-V2, joystick Hall + STM32G030):
   vez no Grove (compartilhado com Encoder/GPS/Fingerprint2/ToF).
 - Driver puro Go separado:
   [M5Unit-Joystick2-Go](https://github.com/nicolasmmb/M5Unit-Joystick2-Go)
-  v0.1.1 — **2 transações I2C por amostra**, 0 alocações.
+  v0.2.0 — **2 transações I2C por amostra**, 0 alocações.
 - Eixos: ADC 16 bits (0–65535), posição ±4095, ADC/posição 8 bits e botão Z.
 - Todas as páginas (**C** avança): VETOR (mira + X/Y + botão), BRUTO (ADC 16/8
   e posição 8 bits) e INFO (fw, bootloader, endereço, LED, calibração).
