@@ -347,6 +347,8 @@ TEST|07|WorkMode|PASS|orig=1 lido=1
 | 11 | Template R/W | `LoadChar` → `UploadTemplateAuto` → `DownloadTemplateAuto` → `Store` → `Delete` |
 | 12 | SearchNow | busca com o dedo (precisa de template) |
 | 13 | AutoIdentify | identificação contínua até a etapa VERIFY |
+| 14 | FW version | leitura do firmware por `0xD7` |
+| 15 | Wakeup | dorme (work mode 0, 10 s), espera o toque e captura o pacote de wakeup |
 
 Comando:
 
@@ -370,10 +372,40 @@ Resultado da campanha neste módulo (A-K323CP):
 | LoadChar | PASS — página 0 |
 | Template R/W | PASS — 7262 bytes, store + delete |
 | SearchNow | PASS — ID 0, score ~317 |
-| AutoIdentify | PASS — etapas 0→1→5, ID 0, score ~317 |
+| AutoIdentify | PASS — etapas 0→1→5, ID 0, score 166–352 |
+| FW version | PASS — `0xD7` devolve 1 |
+| Wakeup | PASS — pacote de wakeup recebido após dormir e tocar |
 
 O `Template R/W` exercita também `UploadTemplate` e `DownloadTemplate` (as
 versões `Auto` chamam as simples em loop).
+
+### Paridade com a lib original
+
+Todas as funções `PS_*` da lib original têm equivalente Go e foram validadas
+neste hardware. As diferenças são de **API**, não de protocolo:
+
+| Original | Go |
+|---|---|
+| `PS_GetImage` | `Capture` |
+| `PS_DeletChar` | `Delete` |
+| `PS_ValidTemplateNum` | `ValidTemplates` |
+| `PS_GetChipSN` | `GetSN` |
+| `PS_ReadINFpage` | `ReadINF` |
+| `PS_ControlBLN` | `ControlLED` |
+| `PS_GetImageInfo` | `ImageInfo` |
+| `PS_UploadTemplateAuto` (callback de progresso) | `UploadTemplateAuto` (retorna os bytes) |
+| `PS_AutoEnroll`/`PS_AutoIdentify` (bloqueantes) | eventos `NextEnrollEvent`/`NextIdentifyEvent` (não bloqueiam a tela) |
+| `setWakeupCallback` | `SetWakeupHandler` + `WaitWakeup` |
+
+Diferenças de comportamento conscientes:
+
+- `Init()` grava **MatchLevel 5** e **WorkMode 1**; a lib original não força isso.
+- A lib original **declara** `0xD0`–`0xD7` (sleep/work mode/activate/status/
+  save/firmware) mas **não implementa**; aqui estão implementadas e testadas.
+- O callback de wakeup original depende de um parser em background. Aqui o
+  pacote `EF 01 FF FF FF FF 07 00 03 FF 01 09` é reconhecido e descartado
+  dentro das leituras (e `WaitWakeup` espera por ele), sem thread extra.
+- Sem `ControlLEDRainbow` e sem `IAPReset` (não existem no protocolo).
 
 Notas:
 
@@ -405,7 +437,7 @@ Notas:
 
 | Grupo | Funções |
 |---|---|
-| Sistema | `Init`, `Handshake`, `ModuleStatus`, `Activate`, `ReadSysParams`, `SetSleepTime`, `GetSleepTime`, `SetWorkMode`, `GetWorkMode`, `SaveConfig`, `GetSN`, `CheckSensor`, `GetRandom` |
+| Sistema | `Init`, `Handshake`, `Activate`, `ModuleStatus`, `GetFirmwareVersion`, `ReadSysParams`, `SetSleepTime`, `GetSleepTime`, `SetWorkMode`, `GetWorkMode`, `SaveConfig`, `GetSN`, `CheckSensor`, `GetRandom`, `WaitWakeup`, `SetWakeupHandler` |
 | Biometria | `Capture`, `GetEnrollImage`, `GenChar`, `Match`, `Search`, `SearchNow`, `RegModel`, `Store`, `LoadChar`, `Delete`, `Empty` |
 | Cadastro auto | `StartAutoEnroll`, `NextEnrollEvent`, `AutoEnroll`, `AutoIdentify`, `Cancel` |
 | Templates | `ValidTemplates`, `ReadIndexTable`, `FirstFreePage`, `UploadTemplate`, `UploadTemplateAuto`, `DownloadTemplate`, `DownloadTemplateAuto` |

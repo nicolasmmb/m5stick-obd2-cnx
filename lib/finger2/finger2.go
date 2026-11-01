@@ -199,6 +199,7 @@ type Device struct {
 	address uint32
 	timeout time.Duration
 	rxBuf   []byte
+	wakeup  func([]byte)
 
 	Firmware   uint8
 	Params     SystemParams
@@ -221,6 +222,78 @@ func New(uart *machine.UART) *Device {
 
 func (d *Device) SetTimeout(t time.Duration) { d.timeout = t }
 func (d *Device) SetAddress(a uint32)        { d.address = a }
+
+// SetWakeupHandler registers a callback for the module's wakeup packet
+// (EF 01 FF FF FF FF 07 00 03 FF 01 09), sent when a finger touches it while
+// in sleep mode. Packet-level wakeups are also skipped inside command reads.
+func (d *Device) SetWakeupHandler(h func([]byte)) { d.wakeup = h }
+
+var wakeupPattern = [12]byte{0xEF, 0x01, 0xFF, 0xFF, 0xFF, 0xFF, 0x07, 0x00, 0x03, 0xFF, 0x01, 0x09}
+
+func isWakeupPacket(pkt []byte) bool {
+	if len(pkt) != len(wakeupPattern) {
+		return false
+	}
+	for i := range wakeupPattern {
+		if pkt[i] != wakeupPattern[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// skipWakeup consumes wakeup packets and fires the handler.
+func (d *Device) skipWakeup(pkt []byte) bool {
+	if !isWakeupPacket(pkt) {
+		return false
+	}
+	if d.wakeup != nil {
+		d.wakeup(pkt)
+	}
+	return true
+}
+
+// WaitWakeup blocks until the module reports a touch or the timeout expires.
+func (d *Device) WaitWakeup(timeout time.Duration) (bool, error) {
+	deadline := time.Now().Add(timeout)
+	for {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return false, ErrTimeout
+		}
+		pkt, err := d.readPacket(remaining)
+		if err != nil {
+			return false, err
+		}
+		if d.skipWakeup(pkt) {
+			return true, nil
+		}
+	}
+}
+
+// Activate wakes the fingerprint module.
+func (d *Device) Activate() error {
+	_, confirm, err := d.transceive(CmdActivate, nil, time.Second)
+	if err != nil {
+		return err
+	}
+	if confirm != ConfirmOK {
+		return Code(confirm)
+	}
+	return nil
+}
+
+// GetFirmwareVersion reads the module firmware version (0xD7).
+func (d *Device) GetFirmwareVersion() (uint8, error) {
+	data, confirm, err := d.transceive(CmdFirmware, nil, time.Second)
+	if err != nil {
+		return 0, err
+	}
+	if confirm != ConfirmOK || len(data) < 1 {
+		return 0, Code(confirm)
+	}
+	return data[0], nil
+}
 
 // Init wakes the module and reads its parameters.
 func (d *Device) Init() error {
@@ -363,6 +436,9 @@ func (d *Device) readAck(timeout time.Duration) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
+		if d.skipWakeup(pkt) {
+			continue
+		}
 		if pkt[6] == pidAck {
 			return pkt, nil
 		}
@@ -400,6 +476,9 @@ func (d *Device) readData(expected int, timeout time.Duration) ([]byte, error) {
 		pkt, err := d.readPacket(remaining)
 		if err != nil {
 			return data, err
+		}
+		if d.skipWakeup(pkt) {
+			continue
 		}
 		if pkt[6] == pidData || pkt[6] == pidEndData {
 			// Data/end packets have no confirmation byte: payload starts at 9.
@@ -794,6 +873,9 @@ func (d *Device) UploadTemplateAuto(size uint16) ([]byte, error) {
 			break
 		}
 		offset += int(actual)
+		if actual < want {
+			break
+		}
 	}
 	return out, nil
 }
@@ -931,6 +1013,9 @@ func (d *Device) NextEnrollEvent(timeout time.Duration) (EnrollProgress, error) 
 		if err != nil {
 			return EnrollProgress{}, err
 		}
+		if d.skipWakeup(pkt) {
+			continue
+		}
 		if pkt[6] != pidAck {
 			continue
 		}
@@ -1002,6 +1087,9 @@ func (d *Device) NextIdentifyEvent(timeout time.Duration) (IdentifyProgress, err
 		pkt, err := d.readPacket(remaining)
 		if err != nil {
 			return IdentifyProgress{}, err
+		}
+		if d.skipWakeup(pkt) {
+			continue
 		}
 		if pkt[6] != pidAck {
 			continue

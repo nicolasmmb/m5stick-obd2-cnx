@@ -100,6 +100,8 @@ var tests = []testCase{
 	{"Template R/W", false, tTemplate},
 	{"SearchNow", true, tSearchNow},
 	{"AutoIdentify", true, tAutoIdentify},
+	{"FW version", false, tFirmware},
+	{"Wakeup", true, tWakeup},
 }
 
 func main() {
@@ -388,6 +390,32 @@ func tSearchNow(d *finger2.Device) (bool, string) {
 		return false, err.Error()
 	}
 	return res.Matched, fmt.Sprintf("confirm=0x%02X page=%d score=%d", res.Confirm, res.Page, res.Score)
+}
+
+func tFirmware(d *finger2.Device) (bool, string) {
+	fw, err := d.GetFirmwareVersion()
+	if err != nil {
+		return false, err.Error()
+	}
+	return fw == d.Firmware, fmt.Sprintf("fw=%d (init=%d)", fw, d.Firmware)
+}
+
+func tWakeup(d *finger2.Device) (bool, string) {
+	if err := d.SetWorkMode(0); err != nil {
+		return false, "workmode: " + err.Error()
+	}
+	if err := d.SetSleepTime(10); err != nil {
+		return false, "sleep: " + err.Error()
+	}
+	drawRun("Wakeup", "aguarde 12s", yellow)
+	time.Sleep(12 * time.Second)
+	drawRun("Wakeup", "TOQUE NO SENSOR", cyan)
+	ok, err := d.WaitWakeup(20 * time.Second)
+	_ = d.SetWorkMode(1)
+	if err != nil {
+		return false, err.Error()
+	}
+	return ok, "pacote de wakeup recebido"
 }
 
 func tAutoIdentify(d *finger2.Device) (bool, string) {
