@@ -51,7 +51,6 @@ poc/sensors/      # menu interativo de sensores na tela
 poc/mic-pdm/      # teste de RMS/dBFS do microfone na serial
 poc/env-iv/       # teste serial do ENV IV (SHT40 + BMP280)
 poc/finger2/      # tela do Unit Fingerprint2 (UART Grove)
-lib/finger2/      # protocolo UART do A-K323CP
 lib/spm1423/      # driver PDM do SPM1423 usando I2S0 + DMA
 docs/             # ideias de sensores, apps e projetos
 ```
@@ -217,7 +216,7 @@ O ENV IV usa **SHT40 (0x44)** e **BMP280 (0x76)** no I2C externo:
 ## Fingerprint2 no Grove
 
 O Unit Fingerprint2 (**A-K323CP**, SKU U203) é controlado por uma lib 100% Go
-em [`lib/finger2`](lib/finger2/finger2.go), sem C/C++/CGo, Arduino ou ESP-IDF.
+no módulo separado [M5Unit-Fingerprint2-Go](https://github.com/nicolasmmb/M5Unit-Fingerprint2-Go), sem C/C++/CGo, Arduino ou ESP-IDF.
 
 ### Hardware e ligação
 
@@ -454,7 +453,7 @@ Benchmark em `poc/finger2-bench` com `runtime.ReadMemStats` e `time.Since`:
 - O cache de build do TinyGo pode ficar velho após muitas edições; se o binário
   não mudar de tamanho, rode `tinygo clean` antes de gravar.
 
-### API resumida (`lib/finger2`)
+### API resumida (M5Unit-Fingerprint2-Go)
 
 | Grupo | Funções |
 |---|---|

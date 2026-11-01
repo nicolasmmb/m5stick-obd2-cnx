@@ -14,7 +14,7 @@ import (
 
 	"machine"
 
-	"m5stick-obd2-cnx/lib/finger2"
+	"github.com/nicolasmmb/M5Unit-Fingerprint2-Go"
 
 	"tinygo.org/x/drivers/pixel"
 )
