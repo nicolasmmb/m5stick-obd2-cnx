@@ -55,13 +55,18 @@ var (
 	statusAt   time.Time
 	statusSent uint64
 	statusErr  uint64
+	nmeaSeen   bool
+	renders    uint32
 )
 
 type uiState struct {
 	page      int
 	baud      uint32
 	valid     bool
+	nmea      bool
 	sats      int
+	view      int
+	snr       int
 	quality   int
 	lat       float64
 	lon       float64
@@ -136,45 +141,70 @@ func main() {
 
 	dev := gps.New(uart)
 	dev.Start()
-	_ = dev.SetWorkMode(7)
 	println("gps: waiting for NMEA")
 
 	for {
 		handleButtons()
 
 		f := dev.Fix()
+		// Only the TIME page shows the clock. Keeping it out of the state on
+		// the other pages avoids a redraw (and a UART ring overflow) every
+		// second even when nothing visible changed.
 		utc := int64(0)
-		if !f.UTC.IsZero() {
+		if page == pageTime && !f.UTC.IsZero() {
 			utc = f.UTC.Unix()
 		}
-		// The status counters change on every sentence. Only refresh them
-		// once per second on the STATUS page so they do not force a display
-		// flush (and UART pressure) at the NMEA rate.
-		if page == pageStatus && time.Since(statusAt) >= time.Second {
+		// Speed jitters by a few tenths of a knot even when stationary, and
+		// it is only shown on the TIME page.
+		speed, course := 0.0, 0.0
+		if page == pageTime {
+			speed, course = f.SpeedKnots, f.Course
+		}
+		// The status counters change on every sentence. Keep them out of the
+		// redraw state unless the STATUS page is open, and refresh that page
+		// once per second; otherwise they would force a display flush at the
+		// NMEA rate. On STATUS they refresh every 3 s: each flush can drop a
+		// few bytes from the 128-byte UART ring, so keep it rare.
+		if f.Sentences > 0 {
+			nmeaSeen = true
+		}
+		sent, errs := uint64(0), uint64(0)
+		if page == pageStatus && time.Since(statusAt) >= 3*time.Second {
 			statusSent = f.Sentences
 			statusErr = f.ChecksumErrors
 			statusAt = time.Now()
 		}
+		if page == pageStatus {
+			sent, errs = statusSent, statusErr
+		}
 		st := uiState{
-			page:      page,
-			baud:      baud,
-			valid:     f.Valid,
-			sats:      f.Satellites,
+			page:  page,
+			baud:  baud,
+			valid: f.Valid,
+			nmea:  nmeaSeen,
+			sats:  f.Satellites,
+			view:  f.SatsInView,
+			// Quantize to 5 dB: the raw value moves every GSV cycle and each
+			// redraw can drop bytes from the 128-byte UART ring.
+			snr:       f.BestSNR / 5 * 5,
 			quality:   f.Quality,
 			lat:       f.Latitude,
 			lon:       f.Longitude,
 			alt:       f.Altitude,
-			speed:     f.SpeedKnots,
-			course:    f.Course,
+			speed:     speed,
+			course:    course,
 			utc:       utc,
 			antenna:   f.Antenna,
-			sentences: statusSent,
-			errors:    statusErr,
+			sentences: sent,
+			errors:    errs,
 		}
 		if time.Since(lastLog) > time.Second {
-			println("gps", f.Sentences, "fix", f.Valid, "sats", f.Satellites,
+			println("gps", f.Sentences, "fix", f.Valid,
+				"sats", f.Satellites, "view", f.SatsInView, "snr", f.BestSNR,
 				"lat", f.Latitude, "lon", f.Longitude, "alt", f.Altitude,
-				"ant", f.Antenna, "baud", baud, "err", f.ChecksumErrors)
+				"ant", f.Antenna, "baud", baud, "err", f.ChecksumErrors,
+				"renders", renders, "spd", f.SpeedKnots, "crs", f.Course,
+				"q", f.Quality)
 			lastLog = time.Now()
 		}
 		render(st)
@@ -248,6 +278,7 @@ func render(st uiState) {
 	}
 	last = st
 	lastRender = time.Now()
+	renders++
 	fb.clear()
 
 	tinyfont.WriteLine(&fb, &freemono.Bold9pt7b, 4, 14, "GPS v1.1", cyan)
@@ -275,7 +306,7 @@ func drawPosition(st uiState) {
 	}
 	tinyfont.WriteLine(&fb, &freemono.Bold9pt7b, 150, 14, status, col)
 
-	if st.sentences == 0 {
+	if !st.nmea {
 		tinyfont.WriteLine(&fb, &freemono.Bold9pt7b, 4, 56, "SEM NMEA", red)
 		tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 76, "verifique o Grove G32/G33", white)
 		tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 92, "e a antena (ceu aberto)", gray)
@@ -284,20 +315,22 @@ func drawPosition(st uiState) {
 
 	tinyfont.WriteLine(&fb, &freemono.Bold9pt7b, 4, 44, fmt.Sprintf("LAT %.5f", st.lat), white)
 	tinyfont.WriteLine(&fb, &freemono.Bold9pt7b, 4, 62, fmt.Sprintf("LON %.5f", st.lon), white)
-	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 82, fmt.Sprintf("ALT %.1f m", st.alt), white)
-	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 98, fmt.Sprintf("SATS %d", st.sats), white)
+	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 82,
+		fmt.Sprintf("VIEW %d  SATS %d", st.view, st.sats), white)
+	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 98,
+		fmt.Sprintf("SNR %d dB", st.snr), white)
 
 	bars := 0
 	switch {
-	case st.sats >= 22:
+	case st.snr >= 40:
 		bars = 5
-	case st.sats >= 18:
+	case st.snr >= 30:
 		bars = 4
-	case st.sats >= 12:
+	case st.snr >= 20:
 		bars = 3
-	case st.sats >= 8:
+	case st.snr >= 10:
 		bars = 2
-	case st.sats >= 4:
+	case st.snr >= 1:
 		bars = 1
 	}
 	heights := [5]int16{6, 10, 14, 18, 22}
@@ -326,22 +359,33 @@ func drawTime(st uiState) {
 		fmt.Sprintf("COURSE %.1f deg", st.course), white)
 }
 
+func fErrorRate(sent, errs uint64) float64 {
+	if sent+errs == 0 {
+		return 0
+	}
+	return 100 * float64(errs) / float64(sent+errs)
+}
+
 func drawStatus(st uiState) {
 	ant := st.antenna
 	if ant == "" {
 		ant = "--"
 	}
-	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 36, "ANTENNA "+ant, white)
-	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 52, fmt.Sprintf("QUALITY %d", st.quality), white)
-	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 68, fmt.Sprintf("BAUD %d", st.baud), white)
-	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 84, "MODE 7 (PCAS04)", white)
-	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 100,
+	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 34, "ANTENNA "+ant, white)
+	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 48, fmt.Sprintf("QUALITY %d", st.quality), white)
+	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 62,
+		fmt.Sprintf("VIEW %d   SATS %d   SNR %d", st.view, st.sats, st.snr), white)
+	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 76, fmt.Sprintf("BAUD %d", st.baud), white)
+	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 90,
 		fmt.Sprintf("SENT %d   ERR %d", st.sentences, st.errors), gray)
 	fix := "SEARCH"
 	if st.valid {
 		fix = "FIX"
 	}
-	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 112, "STATE "+fix, gray)
+	rate := fErrorRate(st.sentences, st.errors)
+	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 104,
+		fmt.Sprintf("LOST %.1f%% (UART ring)", rate), gray)
+	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 114, "STATE "+fix, gray)
 }
 
 func drawProbe(msg string) {
@@ -356,7 +400,7 @@ func drawProbe(msg string) {
 
 func initDisplay() {
 	machine.SPI2.Configure(machine.SPIConfig{
-		Frequency: 40 * machine.MHz,
+		Frequency: 80 * machine.MHz,
 		SCK:       machine.GPIO13,
 		SDO:       machine.GPIO15,
 		SDI:       machine.NoPin,
