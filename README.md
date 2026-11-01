@@ -52,6 +52,7 @@ poc/mic-pdm/      # teste de RMS/dBFS do microfone na serial
 poc/env-iv/       # teste serial do ENV IV (SHT40 + BMP280)
 poc/finger2/      # tela do Unit Fingerprint2 (UART Grove)
 poc/encoder/      # tela de teste do Unit Encoder U135 (I2C Grove)
+poc/gps/          # tela de teste do Unit GPS v1.1 (UART Grove)
 lib/spm1423/      # driver PDM do SPM1423 usando I2S0 + DMA
 docs/             # ideias de sensores, apps e projetos
 ```
@@ -69,6 +70,7 @@ make mic         # flash + monitor (POC do microfone)
 make env         # flash + monitor (POC do ENV IV)
 make finger      # flash + monitor (tela do Fingerprint2)
 make encoder     # flash + monitor (tela do Unit Encoder U135)
+make gps         # flash + monitor (tela do Unit GPS v1.1)
 make monitor     # monitor serial apenas
 ```
 
@@ -500,6 +502,21 @@ Tela de teste do encoder rotativo M5Stack (**SKU U135**, STM32F030F4P6):
 - Tela: contagem, direção/delta, botão e LEDs; **A** alterna o LED,
   **B** a cor, **C** zera a contagem.
 - **Grove compartilhado** com ENV IV e Fingerprint2: use apenas um por vez.
+
+## Unit GPS v1.1
+
+Tela de teste do GPS M5Stack (**v1.1**, AT6668 + MAX2659):
+
+- UART do Grove: **TX=G32, RX=G33**; **115200 8N1** (o U032 antigo usa 9600;
+  a tela testa 115200 e cai para 9600 se não houver NMEA).
+- Driver puro Go separado:
+  [M5Unit-GPS-Go](https://github.com/nicolasmmb/M5Unit-GPS-Go) v0.1.0 —
+  parser NMEA com **0 alocações por sentença**.
+- NMEA: `GGA` (satélites, qualidade, altitude), `RMC` (UTC, lat/lon, velocidade,
+  rumo), `TXT` (antena).
+- Páginas (**A/B**, **C** avança): POSIÇÃO, TEMPO (UTC), STATUS (antena, baud,
+  sentenças/checksums).
+- Grove compartilhado com Fingerprint2/Encoder/ENV IV: um por vez.
 
 ## Zed (autocomplete e diagnósticos)
 

@@ -17,6 +17,8 @@ github.com/nicolasmmb/M5Unit-Encoder-Go v0.1.2 h1:mSwO8FteU9ILsz6OWa7+mkCVbNEFqC
 github.com/nicolasmmb/M5Unit-Encoder-Go v0.1.2/go.mod h1:zixN2LHw39d+zAaUfieN7QpQB5oGWx5K3cJbMSuXFOk=
 github.com/nicolasmmb/M5Unit-Fingerprint2-Go v0.1.0 h1:ZZlrEfSjvVJFAA1W8CJzfUdPkgLzsrE64q6nxE62Sew=
 github.com/nicolasmmb/M5Unit-Fingerprint2-Go v0.1.0/go.mod h1:gW+PqerC5JJPp3cFy20whz8XkbcpKDFvM24oD7UGboM=
+github.com/nicolasmmb/M5Unit-GPS-Go v0.1.0 h1:gEaUOxLY1O3TqA82Lbsk/XayTWH8+bYWLZCsa5JrhIs=
+github.com/nicolasmmb/M5Unit-GPS-Go v0.1.0/go.mod h1:0MmcFY6GXIGdkiN+nKIbPP/PzpmZebpZSW5zA2fFp5A=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/saltosystems/winrt-go v0.0.0-20261015065339-8ef619c103a3 h1:oPCS6+YOyoj6u1cAHhFTWYzyJXrtQfc0P5E/bPjVtDo=
