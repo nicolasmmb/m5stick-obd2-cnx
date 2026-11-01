@@ -1,0 +1,12 @@
+{
+  // Project-local Zed settings: use a gopls wrapper that knows about TinyGo's
+  // GOROOT and build tags. This keeps other Go projects unaffected.
+  "lsp": {
+    "gopls": {
+      "binary": {
+        "path": "/Users/nicolas.mmb/__DEV__/m5stick-obd2-cnx/scripts/gopls-tinygo.sh",
+        "arguments": [],
+      },
+    },
+  },
+}
