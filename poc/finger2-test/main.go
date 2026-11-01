@@ -344,7 +344,7 @@ func tTemplate(d *finger2.Device) (bool, string) {
 	if err != nil || c != finger2.ConfirmOK {
 		return false, fmt.Sprintf("loadchar 0x%02X %v", c, err)
 	}
-	tpl, err := d.UploadTemplateAuto(7262)
+	tpl, err := d.UploadTemplateAuto(finger2.TemplateBytes)
 	if err != nil {
 		return false, "upload: " + err.Error()
 	}

@@ -53,6 +53,9 @@ func main() {
 	}
 	fb := pixel.NewImage[pixel.RGB565BE](240, 135)
 
+	benchCommands(dev)
+	benchTemplates(dev)
+
 	println("BENCH|wait|place and hold a finger")
 	for {
 		if ok, _, err := dev.Capture(); err == nil && ok {
@@ -61,6 +64,8 @@ func main() {
 		time.Sleep(100 * time.Millisecond)
 	}
 	println("BENCH|finger|ok")
+
+	benchRead(dev)
 
 	reused := make([]byte, imageBytes)
 
@@ -130,6 +135,98 @@ func main() {
 			"heap", after.HeapAlloc)
 		benchRender(fb, reused)
 		benchRender(fb, img)
+	}
+}
+
+func benchCommands(dev *finger2.Device) {
+	const n = 200
+	_, _ = dev.ReadSysParams() // warm up
+	runtime.GC()
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	start := time.Now()
+	for i := 0; i < n; i++ {
+		_, _ = dev.ReadSysParams()
+	}
+	elapsed := time.Since(start)
+	runtime.ReadMemStats(&after)
+	println("BENCH|sysparams|count", n, "us_each", elapsed.Microseconds()/n,
+		"mallocs", after.Mallocs-before.Mallocs)
+}
+
+func benchRead(dev *finger2.Device) {
+	const n = 20
+	// Warm up the command path.
+	dev.Capture()
+	dev.GenChar(1)
+	dev.Search(1, 0, dev.Capacity)
+
+	runtime.GC()
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	start := time.Now()
+	matched := 0
+	for i := 0; i < n; i++ {
+		if det, _, err := dev.Capture(); err == nil && det {
+		}
+		if c, err := dev.GenChar(1); err == nil && c == finger2.ConfirmOK {
+		}
+		if res, err := dev.Search(1, 0, dev.Capacity); err == nil && res.Matched {
+			matched++
+		}
+	}
+	elapsed := time.Since(start)
+	runtime.ReadMemStats(&after)
+	println("BENCH|read|count", n, "us_each", elapsed.Microseconds()/n,
+		"mallocs", after.Mallocs-before.Mallocs, "matched", matched)
+}
+
+func benchTemplates(dev *finger2.Device) {
+	dev.RefreshTemplates()
+	if dev.Templates == 0 {
+		println("BENCH|template|none")
+		return
+	}
+	if c, err := dev.LoadChar(1, 0); err != nil || c != finger2.ConfirmOK {
+		println("BENCH|template|loadchar failed", c)
+		return
+	}
+
+	var tpl []byte
+	for i := 0; i < 2; i++ {
+		runtime.GC()
+		var before, after runtime.MemStats
+		runtime.ReadMemStats(&before)
+		start := time.Now()
+		data, err := dev.UploadTemplateAuto(finger2.TemplateBytes)
+		elapsed := time.Since(start)
+		runtime.ReadMemStats(&after)
+		if err != nil {
+			println("BENCH|tplupload|error", err.Error())
+			return
+		}
+		tpl = data
+		println("BENCH|tplupload|bytes", len(data), "us", elapsed.Microseconds(),
+			"mallocs", after.Mallocs-before.Mallocs)
+	}
+	if len(tpl) == 0 {
+		return
+	}
+
+	for i := 0; i < 2; i++ {
+		runtime.GC()
+		var before, after runtime.MemStats
+		runtime.ReadMemStats(&before)
+		start := time.Now()
+		err := dev.DownloadTemplateAuto(tpl)
+		elapsed := time.Since(start)
+		runtime.ReadMemStats(&after)
+		if err != nil {
+			println("BENCH|tpldownload|error", err.Error())
+			return
+		}
+		println("BENCH|tpldownload|bytes", len(tpl), "us", elapsed.Microseconds(),
+			"mallocs", after.Mallocs-before.Mallocs)
 	}
 }
 

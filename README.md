@@ -426,20 +426,40 @@ Benchmark em `poc/finger2-bench` com `runtime.ReadMemStats` e `time.Since`:
 
 | Operação | Antes | Depois |
 |---|---|---|
-| `UpImageTo` (8320 B) | 525 mallocs, heap 131 KB | 1 malloc, heap 91 KB |
-| `UpImage` (8320 B) | 526 mallocs, heap 147 KB | 2 mallocs, heap 107 KB |
+| `UpImageTo` (8320 B) | 525 mallocs, heap 131 KB | **0 mallocs**, heap 91 KB |
+| `UpImage` (8320 B) | 526 mallocs, heap 147 KB | 1 malloc, heap 108 KB |
+| Upload de template (7262 B) | 172 mallocs | **1 malloc** |
+| Download de template (7262 B) | 146 mallocs | **0–1 malloc** |
+| Leitura `Capture`+`GenChar`+`Search` (20×) | 20 mallocs | **0** |
+| `ReadSysParams` (200×) | 1 cópia por chamada | **0** |
 | Render 80×208 → 240×135 | 5,69 ms | 3,09 ms (paleta) |
 
 - `UpImageTo`/`ReadINFTo` escrevem em buffer do chamador e `readPacket` usa um
   scratch persistente: caiu de 525 para 1 malloc por captura.
 - `transceive` copia o payload do ACK para os chamadores não reterem uma visão
-  do scratch (bug encontrado no benchmark: `Init` lia o firmware após reutilizar
-  o buffer).
+  do scratch; upload/download de template usam a variante interna sem cópia.
+- O pacote de comando também é montado num buffer de TX reutilizado: comandos
+  não alocam mais (era 1 malloc por comando).
+- `transceive` não copia mais o ACK: quem devolve dados ao chamador copia
+  explicitamente e os demais consomem o scratch antes do próximo comando.
 - O **upload não acelera**: ~1,81 s por imagem, limitado pelo módulo/UART.
   Pacotes de 256 B (registrador 6) dão ~1,709 s (−5%), mas mudam a config do
   módulo; não adotado.
 - A renderização usa paleta de 16 níveis em RGB565 em vez de converter cada
   pixel.
+- A tela só é redesenhada quando o estado muda (`renderState`): sem transferir
+  65 KB por SPI a cada 100 ms e sem redesenhar a imagem parada.
+- `lib/finger2/internal/wire` isola framing/checksum/ACK/wakeup e tem testes de
+  host: `make test` (não precisa de hardware).
+
+Redesenho (`poc/finger2-render-bench`):
+
+| Cenário | Antes (10 Hz) | Depois |
+|---|---|---|
+| Tela ociosa | 210 ms/s (flush SPI 16,3 ms/frame) | ~0 |
+| Aba IMAGEM | 270 ms/s | ~28 ms/s (1 redraw/captura) |
+| Checagem de estado | — | 93 ns |
+| Loop `min/max/avg` removido | 2,5 ms/captura | 0 |
 
 ### Armadilhas conhecidas
 

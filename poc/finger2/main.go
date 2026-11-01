@@ -208,20 +208,20 @@ func main() {
 		handleButtons(dev, pwm, &status, &statusColor)
 
 		if deletePending || clearPending {
-			renderStatus(dev, status, statusColor, lastID, lastScore, true)
+			renderIfChanged(dev, status, statusColor, lastID, lastScore)
 			time.Sleep(100 * time.Millisecond)
 			continue
 		}
 
 		if enrollMode {
 			status, statusColor = handleEnroll(dev, pwm)
-			renderStatus(dev, status, statusColor, lastID, lastScore, true)
+			renderIfChanged(dev, status, statusColor, lastID, lastScore)
 			time.Sleep(100 * time.Millisecond)
 			continue
 		}
 		if deleteMode {
 			status, statusColor = handleDelete(dev, pwm)
-			renderStatus(dev, status, statusColor, lastID, lastScore, true)
+			renderIfChanged(dev, status, statusColor, lastID, lastScore)
 			time.Sleep(100 * time.Millisecond)
 			continue
 		}
@@ -229,7 +229,6 @@ func main() {
 		if mode == modeImage && !imgLoaded && time.Now().After(cooldown) {
 			status, statusColor = "CAPTURANDO...", yellow
 			hint = ""
-			renderStatus(dev, status, statusColor, lastID, lastScore, true)
 			ok, msg := takeImage(dev)
 			if ok {
 				status, statusColor = "IMAGEM CAPTURADA", green
@@ -251,7 +250,6 @@ func main() {
 				status = "LENDO..."
 				statusColor = yellow
 				hint = ""
-				renderStatus(dev, status, statusColor, lastID, lastScore, false)
 				_ = dev.SetLED(finger2.LEDOn, finger2.LEDYellow, finger2.LEDYellow, 0)
 
 				// Search compares the char buffer, so the image must be
@@ -263,7 +261,7 @@ func main() {
 					hint = finger2.Code(gc).Error()
 					println("finger2: genchar read failed", gc)
 					cooldown = time.Now().Add(2 * time.Second)
-					renderStatus(dev, status, statusColor, lastID, lastScore, true)
+					renderIfChanged(dev, status, statusColor, lastID, lastScore)
 					time.Sleep(100 * time.Millisecond)
 					continue
 				}
@@ -312,7 +310,7 @@ func main() {
 			lastLED = finger2.LEDRed
 		}
 
-		renderStatus(dev, status, statusColor, lastID, lastScore, true)
+		renderIfChanged(dev, status, statusColor, lastID, lastScore)
 		time.Sleep(100 * time.Millisecond)
 	}
 }
@@ -643,6 +641,56 @@ func failDelete(msg string) (string, color.RGBA) {
 	return "FALHA " + msg, red
 }
 
+// renderState captures everything that affects the frame. Rendering is
+// skipped when it does not change, which avoids a full 240x135 SPI transfer
+// every 100 ms (and a full image redraw while idle).
+type renderState struct {
+	mode       int
+	status     string
+	col        color.RGBA
+	id, score  uint16
+	templates  uint16
+	infoPage   int
+	enroll     bool
+	del        bool
+	delPending bool
+	clearPend  bool
+	imgLoaded  bool
+	hint       string
+	imgErr     string
+	imgSeq     uint64
+}
+
+var (
+	lastRender renderState
+	imgSeq     uint64
+)
+
+func renderIfChanged(dev *finger2.Device, status string, col color.RGBA, id, score uint16) {
+	st := renderState{
+		mode:       mode,
+		status:     status,
+		col:        col,
+		id:         id,
+		score:      score,
+		templates:  dev.Templates,
+		infoPage:   infoPage,
+		enroll:     enrollMode,
+		del:        deleteMode,
+		delPending: deletePending,
+		clearPend:  clearPending,
+		imgLoaded:  imgLoaded,
+		hint:       hint,
+		imgErr:     imgErr,
+		imgSeq:     imgSeq,
+	}
+	if st == lastRender {
+		return
+	}
+	lastRender = st
+	renderStatus(dev, status, col, id, score, true)
+}
+
 func renderStatus(dev *finger2.Device, status string, c color.RGBA, id, score uint16, flush bool) {
 	fb.clear()
 	drawTabs()
@@ -829,31 +877,9 @@ func takeImage(dev *finger2.Device) (bool, string) {
 	imgBuff = img[:n]
 	imgLoaded = true
 	imgErr = ""
+	imgSeq++
 
-	// Diagnostics: value range and first bytes.
-	minV, maxV := uint8(15), uint8(0)
-	var sum uint64
-	for i, b := range img {
-		for _, v := range [2]uint8{b & 0x0F, b >> 4} {
-			if v < minV {
-				minV = v
-			}
-			if v > maxV {
-				maxV = v
-			}
-			sum += uint64(v)
-		}
-		_ = i
-	}
-	avg := uint64(0)
-	if n := uint64(len(img) * 2); n > 0 {
-		avg = sum / n
-	}
-	println("finger2: image bytes", len(img), "min", minV, "max", maxV, "avg", avg)
-	if len(img) >= 16 {
-		println("finger2: image head", img[0], img[1], img[2], img[3], img[4], img[5], img[6], img[7],
-			img[8], img[9], img[10], img[11], img[12], img[13], img[14], img[15])
-	}
+	println("finger2: image bytes", len(img))
 	return true, ""
 }
 
