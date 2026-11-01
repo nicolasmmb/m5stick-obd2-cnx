@@ -297,39 +297,49 @@ func (d *Device) GetFirmwareVersion() (uint8, error) {
 
 // Init wakes the module and reads its parameters.
 func (d *Device) Init() error {
-	println("finger2 lib: init start")
 	d.flush()
 	_, _, _ = d.transceive(CmdHandshake, nil, 500*time.Millisecond)
-	println("finger2 lib: handshake done")
 
 	// Some units answer the status query before activate.
 	if data, confirm, err := d.transceive(CmdModuleStatus, nil, 800*time.Millisecond); err == nil && confirm == ConfirmOK && len(data) > 0 {
 		d.Status = uint16(data[0])
 	}
-	for i := 0; i < 3; i++ {
+
+	// The internal module can answer 0xFE ("module not open") for a while
+	// after waking, so activate and probe it a few times.
+	var (
+		params  SystemParams
+		fw      uint8
+		ready   bool
+		lastErr error = ErrTimeout
+	)
+	for attempt := 0; attempt < 15; attempt++ {
 		_, confirm, err := d.transceive(CmdActivate, nil, 800*time.Millisecond)
-		if err == nil && confirm == ConfirmOK {
-			break
+		if err != nil {
+			lastErr = err
+		} else if confirm != ConfirmOK {
+			lastErr = Code(confirm)
+		} else {
+			time.Sleep(120 * time.Millisecond)
+			data, c, err := d.transceive(CmdFirmware, nil, time.Second)
+			if err != nil {
+				lastErr = err
+			} else if c != ConfirmOK || len(data) < 1 {
+				lastErr = Code(c)
+			} else if p, err := d.ReadSysParams(); err != nil {
+				lastErr = err
+			} else {
+				fw, params, ready = data[0], p, true
+				break
+			}
 		}
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(200 * time.Millisecond)
 	}
-	println("finger2 lib: activate done")
+	if !ready {
+		return lastErr
+	}
 
-	data, confirm, err := d.transceive(CmdFirmware, nil, time.Second)
-	if err != nil {
-		return err
-	}
-	if confirm != ConfirmOK || len(data) < 1 {
-		return Code(confirm)
-	}
-	d.Firmware = data[0]
-
-	println("finger2 lib: firmware done")
-	params, err := d.ReadSysParams()
-	if err != nil {
-		return err
-	}
-	println("finger2 lib: params done")
+	d.Firmware = fw
 	d.Params = params
 	d.Capacity = params.Capacity
 	d.PacketSize = params.PacketSize
@@ -337,15 +347,10 @@ func (d *Device) Init() error {
 	d.MatchLevel = params.MatchLevel
 	d.Status = params.Status
 
-	if c, err := d.SetMatchLevel(5); err != nil {
-		println("finger2 lib: matchlevel failed", c, err.Error())
-	} else {
-		d.MatchLevel = 5
-		println("finger2 lib: matchlevel 5 ok")
-	}
+	_, _ = d.SetMatchLevel(5)
+	d.MatchLevel = 5
 	d.Templates, _ = d.ValidTemplates()
 	_ = d.ControlLED(LEDBreath, LEDBlue, LEDBlue, 0)
-	println("finger2 lib: ready")
 	return nil
 }
 
