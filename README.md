@@ -596,17 +596,20 @@ Probe NFC-A do **Unit NFC** (SKU U216, ST25R3916):
 - Grove **I2C1: SDA=G32, SCL=G33**, endereço **0x50**, 400 kHz. Um unit por
   vez no Grove.
 - Driver puro Go separado:
-  [M5Unit-NFC-Go](https://github.com/nicolasmmb/M5Unit-NFC-Go) v0.2.1 —
+  [M5Unit-NFC-Go](https://github.com/nicolasmmb/M5Unit-NFC-Go) v0.3.0 —
   init completo do ST25R3916, ativação NFC-A (REQA/WUPA, anticolisão, SELECT),
   **0 alocações** por detecção.
-- Páginas (**C**): CARTÃO (UID, tipo, ATQA/SAK, memória, tempo de detect) e
-  INFO (chip/rev, RF, scans, erros). **A** liga/desliga o campo RF; **B**
-  reinicializa o chip.
-- Fase 1: **NFC-A + NFC-F**. Validado no hardware: cartões ISO14443-4 (UID de
-  4 e 7 bytes, SAK 0x20) e **Suica/Pasmo (FeliCa)** — IDm/PMm lidos em ~10 ms,
-  0 erros de I2C. O POC alterna automaticamente entre NFC-A e NFC-F a cada
-  3 leituras sem cartão.
-- NFC-V, NFC-B, leitura/escrita, NDEF e emulação entram nas próximas fases.
+- **Uma tela por protocolo** (**C** cicla): **NFC-A**, **NFC-F**, **NFC-B**,
+  **NFC-V** (próxima fase) e INFO. Cada tela ativa **somente** o seu protocolo,
+  então não é preciso testar vários cartões na mesma tela.
+- **A** liga/desliga o campo RF; **B** reinicializa o chip no protocolo da tela;
+  **C** troca de tela (reconfigura o chip automaticamente).
+- NFC-A mostra UID/tipo/ATQA/SAK/memória; NFC-F mostra IDm/PMm; NFC-B mostra
+  PUPI/APPL/PROTO.
+- Fase 1: **NFC-A + NFC-F + NFC-B**. Validado no hardware: cartões ISO14443-4
+  (UID de 4 e 7 bytes, SAK 0x20) e **Suica/Pasmo (FeliCa)** — IDm/PMm lidos em
+  ~10 ms, 0 erros de I2C. A tela NFC-B está pronta para tags ISO14443-B.
+- NFC-V, leitura/escrita, NDEF e emulação entram nas próximas fases.
 
 ## Zed (autocomplete e diagnósticos)
 
