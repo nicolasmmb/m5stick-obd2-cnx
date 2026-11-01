@@ -33,6 +33,15 @@ func TestBuildCommandInto(t *testing.T) {
 	}
 }
 
+func TestBuildCommandIntoShortBuffer(t *testing.T) {
+	if got := BuildCommandInto(make([]byte, 11), 0xFFFFFFFF, 0x03, nil); got != nil {
+		t.Fatalf("short buffer returned % X, want nil", got)
+	}
+	if got := BuildCommandInto(make([]byte, 12), 0xFFFFFFFF, 0x02, []byte{0x01}); got != nil {
+		t.Fatalf("short payload buffer returned % X, want nil", got)
+	}
+}
+
 func TestBuildCommandWithPayload(t *testing.T) {
 	got := BuildCommand(0xFFFFFFFF, 0x02, []byte{0x01})
 	if len(got) != 13 {

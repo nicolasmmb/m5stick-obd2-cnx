@@ -215,6 +215,9 @@ func (d *Device) send(cmd byte, payload []byte) error {
 		d.txScratch = make([]byte, n)
 	}
 	pkt := wire.BuildCommandInto(d.txScratch[:n], d.address, cmd, payload)
+	if pkt == nil {
+		return fmt.Errorf("%w: command packet buffer too small", ErrInvalidParam)
+	}
 	_, err := d.transport.Write(pkt)
 	return err
 }

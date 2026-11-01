@@ -36,9 +36,13 @@ func BuildCommand(address uint32, cmd byte, payload []byte) []byte {
 }
 
 // BuildCommandInto frames a command packet into pkt, which must have at least
-// 12+len(payload) bytes. It returns the used slice.
+// 12+len(payload) bytes. It returns the used slice, or nil if pkt is too small.
 func BuildCommandInto(pkt []byte, address uint32, cmd byte, payload []byte) []byte {
-	pkt = pkt[:12+len(payload)]
+	n := 12 + len(payload)
+	if len(pkt) < n {
+		return nil
+	}
+	pkt = pkt[:n]
 	pkt[0] = Header0
 	pkt[1] = Header1
 	pkt[2] = byte(address >> 24)
