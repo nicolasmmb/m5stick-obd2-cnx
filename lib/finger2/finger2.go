@@ -64,7 +64,6 @@ const (
 	CmdModuleStatus = 0xD5
 	CmdSaveConfig   = 0xD6
 	CmdFirmware     = 0xD7
-	CmdIAPReset     = 0xFD
 
 	// Confirmation codes.
 	ConfirmOK       = 0x00
@@ -78,7 +77,6 @@ const (
 	LEDOff     = 4
 	LEDFadeIn  = 5
 	LEDFadeOut = 6
-	LEDRainbow = 7
 
 	// LED colors.
 	LEDBlack   = 0
@@ -504,17 +502,6 @@ func (d *Device) SaveConfig(option uint8) error {
 	return nil
 }
 
-func (d *Device) IAPReset() error {
-	_, confirm, err := d.transceive(CmdIAPReset, nil, time.Second)
-	if err != nil {
-		return err
-	}
-	if confirm != ConfirmOK {
-		return Code(confirm)
-	}
-	return nil
-}
-
 func (d *Device) Handshake() error {
 	_, confirm, err := d.transceive(CmdHandshake, nil, time.Second)
 	if err != nil {
@@ -560,7 +547,12 @@ func (d *Device) GetRandom() (uint32, error) {
 }
 
 func (d *Device) WriteReg(reg, value uint8) error {
-	_, confirm, err := d.transceive(CmdWriteReg, []byte{reg, value}, time.Second)
+	// Register 4 is disabled; IDs above 9 are sent as 0x10..0x13.
+	id := reg
+	if reg > 9 {
+		id = 0x10 + (reg - 10)
+	}
+	_, confirm, err := d.transceive(CmdWriteReg, []byte{id, value}, time.Second)
 	if err != nil {
 		return err
 	}
@@ -880,34 +872,6 @@ func (d *Device) ControlLED(mode, color, endColor, cycle uint8) error {
 	return nil
 }
 
-func (d *Device) ControlLEDRainbow(colors []uint8, cycle uint8) error {
-	params := make([]byte, 8)
-	params[0] = LEDRainbow
-	params[1] = 0
-	for i := 0; i < 10; i++ {
-		var c uint8
-		if i&1 == 0 {
-			if i < len(colors) {
-				c = colors[i]<<4 | 0x80
-			}
-		} else {
-			if i < len(colors) {
-				c |= colors[i] | 0x08
-			}
-			params[2+i/2] = c
-		}
-	}
-	params[7] = cycle
-	_, confirm, err := d.transceive(CmdControlLED, params, time.Second)
-	if err != nil {
-		return err
-	}
-	if confirm != ConfirmOK {
-		return Code(confirm)
-	}
-	return nil
-}
-
 func (d *Device) Cancel() error {
 	_, confirm, err := d.transceive(CmdCancel, nil, time.Second)
 	if err != nil {
@@ -1003,29 +967,79 @@ func (d *Device) AutoEnroll(page uint16, count uint8, flags uint16, cb func(p En
 	}
 }
 
-// AutoIdentify runs continuous identification.
-func (d *Device) AutoIdentify(security uint8, id uint16, flags uint16, cb func(confirm uint8, data []byte) bool) (uint8, error) {
+// AutoIdentify stages reported by the module in the Param field.
+const (
+	IdentifyStageLegalCheck = 0x00
+	IdentifyStageGetImage   = 0x01
+	IdentifyStageVerify     = 0x05
+)
+
+// IdentifyProgress is one status packet emitted during AutoIdentify.
+// Stage is Param, ID the matched page and Score the match confidence.
+type IdentifyProgress struct {
+	Confirm uint8
+	Stage   uint8
+	ID      uint16
+	Score   uint16
+}
+
+// StartAutoIdentify asks the module to run its own identification loop.
+// id 0xFFFF searches the whole library.
+func (d *Device) StartAutoIdentify(security uint8, id uint16, flags uint16) error {
 	payload := []byte{security, byte(id >> 8), byte(id), byte(flags >> 8), byte(flags)}
 	d.flush()
-	if err := d.send(CmdAutoIdentify, payload); err != nil {
-		return 0, err
+	return d.send(CmdAutoIdentify, payload)
+}
+
+// NextIdentifyEvent waits for the next AutoIdentify status packet.
+func (d *Device) NextIdentifyEvent(timeout time.Duration) (IdentifyProgress, error) {
+	deadline := time.Now().Add(timeout)
+	for {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return IdentifyProgress{}, ErrTimeout
+		}
+		pkt, err := d.readPacket(remaining)
+		if err != nil {
+			return IdentifyProgress{}, err
+		}
+		if pkt[6] != pidAck {
+			continue
+		}
+		confirm, data := ackData(pkt)
+		p := IdentifyProgress{Confirm: confirm}
+		if len(data) >= 1 {
+			p.Stage = data[0]
+		}
+		if len(data) >= 3 {
+			p.ID = uint16(data[1])<<8 | uint16(data[2])
+		}
+		if len(data) >= 5 {
+			p.Score = uint16(data[3])<<8 | uint16(data[4])
+		}
+		return p, nil
 	}
-	deadline := time.Now().Add(60 * time.Second)
-	last := uint8(0xFF)
-	for time.Now().Before(deadline) {
-		pkt, err := d.readAck(2 * time.Second)
+}
+
+// AutoIdentify runs identification until the module reports the verify stage.
+// The callback receives every intermediate progress; return false to stop.
+func (d *Device) AutoIdentify(security uint8, id uint16, flags uint16, cb func(p IdentifyProgress) bool) (IdentifyProgress, error) {
+	if err := d.StartAutoIdentify(security, id, flags); err != nil {
+		return IdentifyProgress{}, err
+	}
+	var last IdentifyProgress
+	for {
+		p, err := d.NextIdentifyEvent(30 * time.Second)
 		if err != nil {
 			return last, err
 		}
-		confirm, data := ackData(pkt)
-		last = confirm
-		if cb != nil && !cb(confirm, data) {
+		last = p
+		if cb != nil && !cb(p) {
 			_ = d.Cancel()
-			return confirm, nil
+			return p, nil
 		}
-		if confirm == ConfirmOK {
-			return confirm, nil
+		if p.Stage == IdentifyStageVerify {
+			return p, nil
 		}
 	}
-	return last, ErrTimeout
 }

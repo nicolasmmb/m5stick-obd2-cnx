@@ -16,7 +16,7 @@ POC para validar TinyGo, Wi-Fi, BLE e o LCD do M5StickC Plus2 antes de integrar 
 | B7 | Bola com física do IMU | ✅ 60 fps, dirty rects e 5 presets |
 | B8 | Simulador de areia | ✅ 1.000 / 10.000 grãos, grid 240×84 |
 | B9 | ENV IV no Grove (SHT40 + BMP280) | ✅ temp/umidade/pressão/altitude |
-| B10 | Fingerprint2 (A-K323CP) no Grove | ✅ tela, captura/busca, LED ring |
+| B10 | Fingerprint2 (A-K323CP) no Grove | ✅ abas, cadastro AutoEnroll, excluir/limpar, imagem, LED ring |
 | C | OBD2 | ⏸️ bloqueado: adaptador ELM327 Bluetooth Classic |
 
 ## Ideias de sensores e apps
@@ -89,7 +89,7 @@ tinygo flash -target=m5stick-c -port=/dev/cu.usbserial-XXXX \
 | sensors | 149 KB | 39 KB + 65 KB do framebuffer |
 | mic-pdm | 23 KB | 4,8 KB + 1 KB de DMA |
 | env-iv | 34 KB | 4,7 KB |
-| finger2 | 98 KB | 12,3 KB |
+| finger2 | 115 KB | 15,1 KB |
 
 O BLE no ESP32 clássico reserva ainda 64 KB fixos de RAM para o controlador.
 
@@ -216,17 +216,201 @@ O ENV IV usa **SHT40 (0x44)** e **BMP280 (0x76)** no I2C externo:
 
 ## Fingerprint2 no Grove
 
-O Unit Fingerprint2 (A-K323CP) usa UART 115200 8N1 no Grove:
+O Unit Fingerprint2 (**A-K323CP**, SKU U203) é controlado por uma lib 100% Go
+em [`lib/finger2`](lib/finger2/finger2.go), sem C/C++/CGo, Arduino ou ESP-IDF.
 
-- TX = G32, RX = G33 (`machine.UART1`).
-- O módulo dorme e acorda com **toque no sensor**; a tela mostra “TOQUE NO SENSOR”.
-- `poc/finger2` mostra firmware, capacidade, digitais cadastradas, ID/score e
-  controla o LED ring e o buzzer.
-- Ainda não há cadastro de digitais pela POC; sem template cadastrado a busca
-  retorna “NAO CADASTRADO”.
+### Hardware e ligação
 
-**Atenção:** ENV IV e Fingerprint2 compartilham o Grove (G32/G33). Use um de
-cada vez; não dá para rodar as duas páginas/POCs juntas.
+- UART **115200 8N1**, `machine.UART1`.
+- TX = **G32**, RX = **G33** (Grove).
+- IMU/tela/botões/buzzer/LED do stick não são afetados.
+- O módulo dorme; `Init()` faz `Handshake`, `Activate`, lê firmware/parâmetros e
+  grava `SetWorkMode(1)` para ficar acordado enquanto a tela está ligada.
+- **ENV IV e Fingerprint2 compartilham o Grove (G32/G33).** Use um de cada vez.
+
+### Protocolo
+
+Pacotes `EF 01 | addr(4) | PID | len(2) | payload | checksum(2)`:
+
+| PID | Tipo | Payload |
+|---|---|---|
+| `0x01` | comando | `cmd` + parâmetros |
+| `0x07` | ACK | **confirm** + dados |
+| `0x02` | dados | **somente dados** |
+| `0x08` | fim dos dados | **somente dados** |
+
+> **Detalhe importante (já causou bug real):** só o ACK começa com o byte de
+> confirmação. Nos pacotes de dados o payload começa direto. Ler pacotes de
+> dados com o mesmo helper do ACK descarta **1 byte por pacote** — com os ~65
+> pacotes da imagem isso perdia 65 bytes (8320 → 8255) e produzia uma **linha
+> diagonal fixa** na imagem por deslocamento acumulado. `readData()` lê
+> `pkt[9:len-2]`; `ackData()` (só ACKs) lê `confirm=pkt[9]` e dados de `pkt[10:]`.
+
+### Cadastro (AutoEnroll)
+
+O cadastro usa o state machine do próprio módulo, comando `0x31`:
+
+```go
+dev.StartAutoEnroll(page, 2, finger2.AutoEnrollDefault)
+for {
+    ev, err := dev.NextEnrollEvent(200 * time.Millisecond)
+    // ev.Confirm, ev.Stage, ev.Param
+    if ev.Stage == finger2.EnrollStageStore { break }
+}
+```
+
+Etapas reportadas em `Stage` (Param1):
+
+| Valor | Etapa | Tela |
+|---|---|---|
+| `0x00` | legal check | VALIDANDO |
+| `0x01` | get image | ENCOSTE O DEDO / CAPTURANDO |
+| `0x02` | gen char | GERANDO |
+| `0x03` | lift finger | LEVANTE O DEDO |
+| `0x04` | merge | MESCLANDO |
+| `0x05` | verify | VERIFICANDO |
+| `0x06` | store | CADASTRADO |
+
+`confirm == 0x02` (sem dedo) **não** é erro: é só espera. Ao final, o módulo
+grava o template e a página livre vem de `FirstFreePage()` (índice de templates).
+
+O cadastro manual antigo (2× `Capture` + `GenChar` + `RegModel`) foi abandonado:
+a segunda captura falhava com frequência e o `RegModel` às vezes gravava um
+template ruim. O AutoEnroll valida a consistência internamente.
+
+### Leitura (busca)
+
+`PS_Search (0x04)` compara o **char buffer**, não a imagem. A sequência correta é:
+
+```
+Capture (0x01)  →  GenChar(1) (0x02)  →  Search(buffer 1) (0x04)
+```
+
+Sem o `GenChar(1)`, o `Search` reutiliza o buffer da última leitura/cadastro e
+**qualquer dedo casa** com score ~446 (era o falso positivo que aparecia). Com o
+fluxo correto, dedo cadastrado dá score ~85 e dedo diferente retorna
+`confirm 0x09` (não encontrado).
+
+O critério de match é o **código de confirmação**, não o score. O score é só
+confiança. `SetMatchLevel(5)` grava o registrador 5 no `Init()`.
+
+### Imagem do sensor
+
+- Resolução **80×208**, 4 bits/pixel (2 pixels por byte), 508 dpi.
+- `UpImage (0x0A)` envia ~8320 bytes em pacotes de dados + pacote de fim.
+- Nibble **baixo** = pixel par, **nibble alto** = pixel ímpar; `0` = preto,
+  `15` = branco (convertido para `v*17`).
+- A POC deixa o dedo assentar **350 ms** e captura de novo antes do upload —
+  a primeira frame do toque costuma sair borrada.
+- Renderização: rotaciona 90° (fica 208×80) e centraliza na tela; usa o número
+  real de linhas recebidas.
+
+### Tela (`poc/finger2`)
+
+Duas linhas de abas com nomes completos:
+
+```
+LEITURA | IMAGEM | CADASTRO
+EXCLUIR | LIMPAR | INFO
+```
+
+- **A/B** percorre as abas; **C** executa a ação (e confirma/cancela).
+- **LEITURA**: `Capture` → `GenChar(1)` → `Search`; mostra ID e confiança.
+- **IMAGEM**: captura e desenha a digital na tela; **C** faz nova captura.
+- **CADASTRO**: AutoEnroll com 2 leituras.
+- **EXCLUIR**: identifica o dedo e pede confirmação antes de apagar.
+- **LIMPAR**: apaga todos os templates, com confirmação.
+- **INFO**: firmware/SN, memória/MatchLevel, work mode/sleep, último resultado.
+- LED ring e buzzer acompanham o estado (verde ok, vermelho falha, amarelo lido).
+
+### POC de testes (`poc/finger2-test`)
+
+Firmware separado para validar os comandos que a tela principal não usa. Menu na
+tela (**A/B** escolhe, **C** roda), resultado `PASS`/`FAIL` na tela e na serial:
+
+```
+TEST|07|WorkMode|PASS|orig=1 lido=1
+```
+
+| # | Teste | O que valida |
+|---|---|---|
+| 01 | GetSN | leitura do serial number (32 bytes) |
+| 02 | GetRandom | duas leituras e valores diferentes |
+| 03 | CheckSensor | auto-teste do sensor |
+| 04 | ReadINF | página INF (512 bytes) |
+| 05 | Notepad | escreve 32 bytes, lê e compara |
+| 06 | LED modes | blink vermelho + fade verde/ciano (visual) |
+| 07 | WorkMode | `Get` → `Set(1)` → `Get` |
+| 08 | SleepTime | `Get` → `Set(30)` → `Get` → restaura |
+| 09 | SaveConfig | grava configuração no flash |
+| 10 | LoadChar | carrega template da página 0 no buffer 1 |
+| 11 | Template R/W | `LoadChar` → `UploadTemplateAuto` → `DownloadTemplateAuto` → `Store` → `Delete` |
+| 12 | SearchNow | busca com o dedo (precisa de template) |
+| 13 | AutoIdentify | identificação contínua até a etapa VERIFY |
+
+Comando:
+
+```bash
+make finger-test
+```
+
+Resultado da campanha neste módulo (A-K323CP):
+
+| Teste | Resultado |
+|---|---|
+| GetSN | PASS — 32 bytes, mas **alinhado à direita**: os 24 primeiros são zero |
+| GetRandom | PASS — dois valores distintos |
+| CheckSensor | PASS |
+| ReadINF | PASS — 512 bytes |
+| Notepad | PASS — escrita/leitura conferem |
+| LED modes | PASS — blink e fade (modos 1–6; modo 7 não existe) |
+| WorkMode | PASS — ida e volta |
+| SleepTime | PASS — set 30, lê 30, restaura |
+| SaveConfig | PASS |
+| LoadChar | PASS — página 0 |
+| Template R/W | PASS — 7262 bytes, store + delete |
+| SearchNow | PASS — ID 0, score ~317 |
+| AutoIdentify | PASS — etapas 0→1→5, ID 0, score ~317 |
+
+O `Template R/W` exercita também `UploadTemplate` e `DownloadTemplate` (as
+versões `Auto` chamam as simples em loop).
+
+Notas:
+
+- Os testes 10–13 exigem pelo menos um template cadastrado (use a tela principal).
+- O teste 11 cria uma página temporária e apaga no final.
+- **Não existe `IAPReset`**: `0xFD` é o código de status `PARAM_ERROR` na lib
+  original, não um comando. Foi removido da lib.
+- **Não existe modo rainbow**: os modos de LED válidos são 1–6 (breathing,
+  flashing, on, off, fade-in, fade-out). O modo 7 retorna `confirm 0x35`
+  (parâmetro inválido) e foi removido da lib.
+- `SetSleepTime`/`GetSleepTime`/`SetWorkMode`/`GetWorkMode`/`SaveConfig`
+  (`0xD0`–`0xD6`) existem no protocolo, mas a lib original não os expõe; por isso
+  não há referência de comportamento — o teste apenas verifica ida e volta.
+
+### Armadilhas conhecidas
+
+- `modeRead = iota` declarado no mesmo `const` de `screenW`/`screenH` vale **2**,
+  não 0 — as abas ficam deslocadas e `modeCount` estoura o array. Mantenha os
+  dois blocos `const` separados.
+- `Search` sempre precisa de um `GenChar` antes.
+- O `GetSN` deste módulo devolve 32 bytes com o serial no **fim** (zeros à
+  esquerda); a tela INFO mostra os últimos 8 bytes não nulos.
+- Apagar a base (`Empty`, `0x0D`) é obrigatório ao trocar de dedo de teste,
+  senão o template antigo continua respondendo.
+- O cache de build do TinyGo pode ficar velho após muitas edições; se o binário
+  não mudar de tamanho, rode `tinygo clean` antes de gravar.
+
+### API resumida (`lib/finger2`)
+
+| Grupo | Funções |
+|---|---|
+| Sistema | `Init`, `Handshake`, `ModuleStatus`, `Activate`, `ReadSysParams`, `SetSleepTime`, `GetSleepTime`, `SetWorkMode`, `GetWorkMode`, `SaveConfig`, `GetSN`, `CheckSensor`, `GetRandom` |
+| Biometria | `Capture`, `GetEnrollImage`, `GenChar`, `Match`, `Search`, `SearchNow`, `RegModel`, `Store`, `LoadChar`, `Delete`, `Empty` |
+| Cadastro auto | `StartAutoEnroll`, `NextEnrollEvent`, `AutoEnroll`, `AutoIdentify`, `Cancel` |
+| Templates | `ValidTemplates`, `ReadIndexTable`, `FirstFreePage`, `UploadTemplate`, `UploadTemplateAuto`, `DownloadTemplate`, `DownloadTemplateAuto` |
+| Imagem | `UpImage`, `ImageInfo` |
+| Extras | `ReadINF`, `ReadNotepad`, `WriteNotepad`, `ControlLED`, `SetLED`, `WriteReg`, `SetMatchLevel` |
 
 ## Zed (autocomplete e diagnósticos)
 
@@ -246,7 +430,7 @@ gopls version  # v0.21.1 ou mais novo
 Validação pela linha de comando:
 
 ```bash
-make check     # roda gopls check nos quatro POCs
+make check     # roda gopls check em todos os POCs e libs
 ```
 
 No Zed, abra a pasta `m5stick-obd2-cnx` como raiz do projeto e reinicie o

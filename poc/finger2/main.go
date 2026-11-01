@@ -853,8 +853,20 @@ func takeImage(dev *finger2.Device) (bool, string) {
 
 func renderInfo(dev *finger2.Device) {
 	snText := "--"
-	if snOK && len(sn) >= 4 {
-		snText = fmt.Sprintf("%X", sn[:4])
+	if snOK {
+		// This unit returns the SN right-aligned with leading zero bytes.
+		i := 0
+		for i < len(sn) && sn[i] == 0 {
+			i++
+		}
+		tail := sn[i:]
+		if len(tail) == 0 {
+			snText = "00000000"
+		} else if len(tail) > 8 {
+			snText = fmt.Sprintf("%X", tail[len(tail)-8:])
+		} else {
+			snText = fmt.Sprintf("%X", tail)
+		}
 	}
 	switch infoPage {
 	case 0:
