@@ -54,6 +54,8 @@ var (
 
 	dev     *nfc.Device
 	rfOn    = true
+	proto   = 1 // 1 NFC-A, 2 NFC-F
+	misses  int
 	chipTyp uint8
 	chipRev uint8
 	scans   uint32
@@ -64,6 +66,7 @@ type uiState struct {
 	page     int
 	online   bool
 	rf       bool
+	proto    int
 	card     bool
 	uid      [7]byte
 	uidLen   uint8
@@ -71,6 +74,8 @@ type uiState struct {
 	sak      uint8
 	typeID   uint8
 	mem      uint16
+	idm      [8]byte
+	pmm      [8]byte
 	chipTyp  uint8
 	chipRev  uint8
 	detectUS int64
@@ -159,26 +164,58 @@ func main() {
 			rf:      rfOn,
 			chipTyp: chipTyp,
 			chipRev: chipRev,
+			proto:   proto,
 			scans:   atomic.LoadUint32(&scans),
 			errors:  atomic.LoadUint32(&errors),
 		}
 		if rfOn {
 			ctx, cancel := context.WithTimeout(context.Background(), 120*time.Millisecond)
 			start := time.Now()
-			c, ok, err := dev.Detect(ctx)
+			ok := false
+			var err error
+			if proto == 1 {
+				var c nfc.Card
+				c, ok, err = dev.Detect(ctx)
+				if ok {
+					st.uid = c.UID
+					st.uidLen = c.UIDLen
+					st.atqa = c.ATQA
+					st.sak = c.SAK
+					st.typeID = c.TypeID
+					st.mem = c.UserMemory
+				}
+			} else {
+				var c nfc.FeliCaCard
+				c, ok, err = dev.DetectF(ctx)
+				if ok {
+					st.idm = c.IDm
+					st.pmm = c.PMm
+				}
+			}
 			cancel()
 			st.detectUS = int64(time.Since(start) / time.Microsecond)
 			if err != nil {
 				atomic.AddUint32(&errors, 1)
 				println("nfc: detect", err.Error())
-			} else if ok {
-				st.card = true
-				st.uid = c.UID
-				st.uidLen = c.UIDLen
-				st.atqa = c.ATQA
-				st.sak = c.SAK
-				st.typeID = c.TypeID
-				st.mem = c.UserMemory
+			}
+			st.card = ok
+			st.proto = proto
+			if ok {
+				misses = 0
+			} else if err == nil {
+				misses++
+				if misses >= 3 {
+					misses = 0
+					if proto == 1 {
+						if err := dev.ConfigureF(context.Background()); err == nil {
+							proto = 2
+						}
+					} else {
+						if err := dev.ConfigureA(context.Background()); err == nil {
+							proto = 1
+						}
+					}
+				}
 			}
 			atomic.AddUint32(&scans, 1)
 			st.scans = atomic.LoadUint32(&scans)
@@ -187,10 +224,14 @@ func main() {
 		render(st)
 
 		if time.Since(lastLog) > time.Second {
-			if st.card {
-				println("nfc", "uid", fmt.Sprintf("% X", st.uid[:st.uidLen]),
+			if st.card && st.proto == 1 {
+				println("nfc A", "uid", fmt.Sprintf("% X", st.uid[:st.uidLen]),
 					"type", nfc.TypeName(st.typeID), "atqa", st.atqa,
 					"sak", st.sak, "mem", st.mem, "detect_us", st.detectUS,
+					"scans", st.scans, "err", st.errors)
+			} else if st.card {
+				println("nfc F", "idm", fmt.Sprintf("% X", st.idm[:]),
+					"pmm", fmt.Sprintf("% X", st.pmm[:]), "detect_us", st.detectUS,
 					"scans", st.scans, "err", st.errors)
 			} else {
 				println("nfc: no card; scans", st.scans, "err", st.errors,
@@ -238,6 +279,8 @@ func handleButtons() {
 			atomic.StoreUint32(&scans, 0)
 			atomic.StoreUint32(&errors, 0)
 			rfOn = true
+			proto = 1
+			misses = 0
 			println("nfc: reinit ok")
 		}
 	}
@@ -284,28 +327,46 @@ func drawCard(st uiState) {
 	if !st.card {
 		tinyfont.WriteLine(&fb, &freemono.Bold12pt7b, 4, 56, "APROXIME", yellow)
 		tinyfont.WriteLine(&fb, &freemono.Bold12pt7b, 4, 80, "UM CARTAO", yellow)
-		tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 102, "NFC-A / MIFARE", gray)
+		tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 102,
+			fmt.Sprintf("procurando NFC-%s", protoName(st.proto)), gray)
 		return
 	}
-	uid := fmt.Sprintf("% X", st.uid[:st.uidLen])
-	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 36, "UID", gray)
-	tinyfont.WriteLine(&fb, &freemono.Bold9pt7b, 4, 52, uid, white)
-	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 70, nfc.TypeName(st.typeID), green)
-	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 86,
-		fmt.Sprintf("ATQA %04X  SAK %02X", st.atqa, st.sak), white)
-	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 100,
-		fmt.Sprintf("MEM %d B   %d us", st.mem, st.detectUS), white)
+	if st.proto == 1 {
+		uid := fmt.Sprintf("% X", st.uid[:st.uidLen])
+		tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 36, "NFC-A / UID", gray)
+		tinyfont.WriteLine(&fb, &freemono.Bold9pt7b, 4, 52, uid, white)
+		tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 70, nfc.TypeName(st.typeID), green)
+		tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 86,
+			fmt.Sprintf("ATQA %04X  SAK %02X", st.atqa, st.sak), white)
+		tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 100,
+			fmt.Sprintf("MEM %d B   %d us", st.mem, st.detectUS), white)
+		return
+	}
+	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 36, "NFC-F / FeliCa", gray)
+	tinyfont.WriteLine(&fb, &freemono.Bold9pt7b, 4, 52,
+		fmt.Sprintf("% X", st.idm[:]), green)
+	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 72,
+		fmt.Sprintf("PMm % X", st.pmm[:]), white)
+	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 92,
+		fmt.Sprintf("Suica/Pasmo/FeliCa  %d us", st.detectUS), white)
 }
 
 func drawInfo(st uiState) {
 	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 36,
 		fmt.Sprintf("CHIP %d  REV %d  ADDR 0x50", st.chipTyp, st.chipRev), white)
 	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 52,
-		fmt.Sprintf("RF %v  DETECT %d us", st.rf, st.detectUS), white)
+		fmt.Sprintf("RF %v  MODO NFC-%s  DETECT %d us", st.rf, protoName(st.proto), st.detectUS), white)
 	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 68,
 		fmt.Sprintf("SCANS %d  ERRORS %d", st.scans, st.errors), white)
-	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 88, "FASE 1: NFC-A PROBE", gray)
-	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 102, "NFC-F/B/V: proxima fase", gray)
+	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 88, "FASE 1: PROBE NFC-A + F", gray)
+	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 102, "NFC-B/V: proxima fase", gray)
+}
+
+func protoName(p int) string {
+	if p == 2 {
+		return "F"
+	}
+	return "A"
 }
 
 func drawBoot(msg string) {
