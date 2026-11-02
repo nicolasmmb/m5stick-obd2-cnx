@@ -2,6 +2,9 @@
 
 POC para validar TinyGo, Wi-Fi, BLE e o LCD do M5StickC Plus2 antes de integrar com OBD2.
 
+> Guia completo do board (pinos, versões, conexão, Wi-Fi/BLE, OBD2 e testes):
+> **[M5STICKC-PLUS2-GUIDE.md](M5STICKC-PLUS2-GUIDE.md)**.
+
 ## Status
 
 | Fase | Descrição | Resultado |
