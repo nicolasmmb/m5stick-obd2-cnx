@@ -17,6 +17,15 @@ func TestCachePutGet(t *testing.T) {
 	}
 }
 
+func TestPutQuality(t *testing.T) {
+	c := NewCache()
+	c.PutQuality("0D", obdpid.QualityTimeout)
+	r, ok := c.Get("0D")
+	if !ok || r.Quality != obdpid.QualityTimeout {
+		t.Fatalf("got %+v ok=%v", r, ok)
+	}
+}
+
 func TestSnapshotStale(t *testing.T) {
 	now := time.Now()
 	s := NewSnapshot(map[string]obdpid.Reading{

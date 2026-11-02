@@ -29,6 +29,18 @@ func (c *Cache) Put(r obdpid.Reading) {
 	c.mu.Unlock()
 }
 
+func (c *Cache) PutQuality(pid string, q obdpid.Quality) {
+	c.mu.Lock()
+	r, ok := c.m[pid]
+	if !ok {
+		r = obdpid.Reading{PID: pid}
+	}
+	r.Quality = q
+	r.At = time.Now()
+	c.m[pid] = r
+	c.mu.Unlock()
+}
+
 func (c *Cache) Get(pid string) (obdpid.Reading, bool) {
 	c.mu.RLock()
 	r, ok := c.m[pid]
