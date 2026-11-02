@@ -184,9 +184,12 @@ A distância e o consumo zeram quando o firmware reinicia.
 
 ## Atualização
 
-- loop de UI a ~60 Hz (`16 ms`);
+- loop de UI a ~60–70 Hz (`12 ms`);
+- cada tile sujo é composto e enviado no próprio tick (sem espera de 100 ms);
 - página completa só é redesenhada na troca de página;
 - após uma leitura, o framebuffer é recomposto e apenas os **tiles sujos** são enviados ao LCD;
+- render sem `strconv`/concatenação: números em buffers fixos;
+- parser serial binário sem alocação; cache em tabela fixa de 64 slots;
 - heartbeat: quadrado de 5×4 px no rodapé direito pisca a 2 Hz; se parar, a UI travou;
 - troca de página usa composição completa;
 - framebuffer evita flicker/ghosting.
