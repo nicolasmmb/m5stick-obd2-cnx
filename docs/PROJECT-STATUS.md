@@ -183,7 +183,13 @@ data/<sessão>/
 11. Validar VIN no carro.
 12. Criar teste de hardware para A/B.
 
-### P2 — dados e ML
+### P2 — replay e dados
+
+- implementar `cmd/obd-replay` e modo REPLAY no firmware;
+- testar gravações sem o carro;
+- migrar a UI para snapshots com qualidade/idade.
+
+### P3 — dados e ML
 
 13. Converter CSV para Parquet.
 14. Criar notebook/pipeline de análise.
@@ -195,7 +201,8 @@ data/<sessão>/
 ## 8. Comandos úteis
 
 ```bash
-make obd-logger   # grava firmware compacto + tela
+make obd-logger         # firmware live com BLE + tela
+make obd-logger-replay  # firmware replay-only, sem BLE linkado
 # Ctrl-C para fechar o monitor
 make log          # lê a serial e grava em data/
 make replay       # testa com sample compacto
@@ -204,10 +211,44 @@ make build
 make check
 ```
 
+### Performance do firmware
+
+| Caminho | Tempo | Alocs |
+| --- | --- | --- |
+| `obdwire.ParseCommand` (host) | 95 ns/op | 1 |
+| `obdline.Parse` (Stick) | 31 ns/op | 0 |
+| `Registry.DecodeBytes` | 48 ns/op | 0 |
+| `Cache.Put` + `Get` | 39 ns/op | 0 |
+
+- cache fixo de 64 slots, sem `map` no caminho de leitura/escrita;
+- `Reading` não retém mais `Raw []byte`;
+- texto desenhado direto pelo glifo, sem a slice de cores do `tinyfont`;
+- replay validado por 90 s / 2.436 registros sem OOM, a ~70 ticks/s.
+
+### BLE no modo replay
+
+O firmware é um único binário completo (live + replay). O BLE só é
+inicializado quando o modo live começa; ao entrar em `C,REPLAY`:
+
+- o scan é parado;
+- o adaptador não é habilitado de novo;
+- se já estava conectado, a sessão é encerrada no próximo ciclo.
+
+Se o host enviar `C,REPLAY` nos primeiros 2 s após o boot, o
+`Adapter.Enable()` nunca é chamado e a arena do controlador BLE não é alocada
+em runtime.
+
+Limitação: `espradio` não expõe `Deinit`; depois que o BLE foi habilitado uma
+vez, a região reservada no linker não pode ser devolvida ao heap. Nesse caso o
+firmware para o scan, encerra a conexão e não usa mais o adaptador até um novo
+`C,LIVE`.
+
 ## 9. Documentos relacionados
 
 - [README](../README.md)
+- [Plano de otimização](OPTIMIZATION-PLAN.md)
 - [Formato do logger](OBD2-LOGGER-FORMAT.md)
+- [Formato do replay](OBD2-REPLAY-FORMAT.md)
 - [Documentação por arquivo](logger/README.md)
 - [Layout da tela](ui-layout.md)
 - [Catálogo OBD2](OBD2-DATA-CATALOG.md)
