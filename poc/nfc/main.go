@@ -57,12 +57,16 @@ var (
 	lastAt  time.Time
 	lastLog time.Time
 
-	dev     *nfc.Device
-	rfOn    = true
-	chipTyp uint8
-	chipRev uint8
-	scans   uint32
-	errors  uint32
+	dev  *nfc.Device
+	rfOn = true
+
+	writeArmUntil time.Time
+	writeMsg      string
+	writeMsgUntil time.Time
+	chipTyp       uint8
+	chipRev       uint8
+	scans         uint32
+	errors        uint32
 )
 
 type uiState struct {
@@ -302,8 +306,106 @@ func setupButtons() {
 	_ = machine.GPIO35.SetInterrupt(machine.PinFalling, func(machine.Pin) { atomic.AddUint32(&btnC, 1) })
 }
 
+func reinitChip() {
+	drawBoot("reiniciando")
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	err := dev.Begin(ctx)
+	cancel()
+	if err != nil {
+		println("nfc: begin", err.Error())
+		drawOffline(err.Error())
+		return
+	}
+	if page <= pageB || page == pageT2 || page == pageCL {
+		_ = configurePage(page)
+	}
+	chipTyp, chipRev, _ = dev.Identity()
+	atomic.StoreUint32(&scans, 0)
+	atomic.StoreUint32(&errors, 0)
+	rfOn = true
+	last = uiState{}
+	println("nfc: reinit ok")
+}
+
+func nextPage() {
+	page = (page + 1) % pageCount
+	if page <= pageB || page == pageT2 || page == pageCL {
+		if err := configurePage(page); err != nil {
+			println("nfc: configure", err.Error())
+		} else {
+			rfOn = true
+		}
+	}
+	last = uiState{}
+	println("nfc: tela", pageName(page))
+}
+
+func writeTest() {
+	drawWriting("GRAVANDO...")
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	ok := false
+	var err error
+	switch page {
+	case pageT2:
+		var c nfc.Card
+		c, ok, err = dev.Detect(ctx)
+		if err == nil && ok && c.IsType2() {
+			ok, err = dev.Type2WritePage(ctx, 4, [4]byte{0xCA, 0xFE, 0xBA, 0xBE})
+			_ = dev.Halt(ctx)
+			if err == nil && ok {
+				writeMsg = "PAG 4 GRAVADA OK"
+			} else {
+				writeMsg = "FALHA AO GRAVAR"
+			}
+		} else {
+			writeMsg = "SEM CARTAO TYPE 2"
+		}
+	case pageCL:
+		var c nfc.Card
+		c, ok, err = dev.Detect(ctx)
+		if err == nil && ok && c.IsClassic() {
+			data := [16]byte{0xDE, 0xAD, 0xBE, 0xEF,
+				0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+				0x09, 0x0A, 0x0B, 0x0C}
+			ok, err = dev.ClassicWriteBlock(ctx, c.UID[:c.UIDLen], 1, [6]byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}, data)
+			_ = dev.Halt(ctx)
+			if err == nil && ok {
+				writeMsg = "BLOCO 1 GRAVADO OK"
+			} else if err != nil {
+				writeMsg = "FALHA: " + err.Error()
+			} else {
+				writeMsg = "FALHA AO GRAVAR"
+			}
+		} else {
+			writeMsg = "SEM CARTAO CLASSIC"
+		}
+	default:
+		writeMsg = "TELA SEM ESCRITA"
+	}
+	writeMsgUntil = time.Now().Add(3 * time.Second)
+	println("nfc: write", writeMsg)
+	last = uiState{}
+}
+
 func handleButtons() {
 	now := time.Now()
+	if atomic.SwapUint32(&btnB, 0) > 0 && now.Sub(lastB) > 400*time.Millisecond {
+		lastB = now
+		if page == pageT2 || page == pageCL {
+			if now.Before(writeArmUntil) {
+				writeArmUntil = time.Time{}
+				writeTest()
+			} else {
+				writeArmUntil = now.Add(3 * time.Second)
+				writeMsg = "B DE NOVO P/ GRAVAR"
+				writeMsgUntil = writeArmUntil
+				last = uiState{}
+			}
+		} else {
+			reinitChip()
+		}
+	}
 	if atomic.SwapUint32(&btnA, 0) > 0 && now.Sub(lastA) > 250*time.Millisecond {
 		lastA = now
 		if rfOn {
@@ -313,41 +415,12 @@ func handleButtons() {
 			_ = dev.RFOn()
 			rfOn = true
 		}
+
+		if atomic.SwapUint32(&btnC, 0) > 0 && now.Sub(lastC) > 250*time.Millisecond {
+			lastC = now
+			nextPage()
+		}
 		println("nfc: rf", rfOn)
-	}
-	if atomic.SwapUint32(&btnB, 0) > 0 && now.Sub(lastB) > 500*time.Millisecond {
-		lastB = now
-		drawBoot("reiniciando")
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		err := dev.Begin(ctx)
-		cancel()
-		if err != nil {
-			println("nfc: begin", err.Error())
-			drawOffline(err.Error())
-		} else {
-			if page <= pageB {
-				_ = configurePage(page)
-			}
-			chipTyp, chipRev, _ = dev.Identity()
-			atomic.StoreUint32(&scans, 0)
-			atomic.StoreUint32(&errors, 0)
-			rfOn = true
-			last = uiState{}
-			println("nfc: reinit ok")
-		}
-	}
-	if atomic.SwapUint32(&btnC, 0) > 0 && now.Sub(lastC) > 250*time.Millisecond {
-		lastC = now
-		page = (page + 1) % pageCount
-		if page <= pageB {
-			if err := configurePage(page); err != nil {
-				println("nfc: configure", err.Error())
-			} else {
-				rfOn = true
-			}
-		}
-		last = uiState{}
-		println("nfc: tela", pageName(page))
 	}
 }
 
@@ -390,7 +463,11 @@ func render(st uiState) {
 	}
 
 	fb.fillRect(0, 120, screenW, 1, darkGray)
-	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 133, "A: RF  B: reiniciar  C: pagina", gray)
+	hint := "A: RF  B: reiniciar  C: pagina"
+	if st.page == pageT2 || st.page == pageCL {
+		hint = "B 2x: GRAVAR   C: pagina   A: RF"
+	}
+	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 133, hint, gray)
 	fb.flush()
 }
 
@@ -454,8 +531,11 @@ func drawT2(st uiState) {
 	} else {
 		tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 96, "READ FALHOU", red)
 	}
-	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 112,
+	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 104,
 		fmt.Sprintf("%d us", st.detectUS), gray)
+	if time.Now().Before(writeMsgUntil) {
+		tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 116, writeMsg, green)
+	}
 }
 
 func drawCL(st uiState) {
@@ -474,6 +554,9 @@ func drawCL(st uiState) {
 			fmt.Sprintf("% X", st.clData[8:]), white)
 	} else {
 		tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 88, "AUTH/READ FALHOU", red)
+	}
+	if time.Now().Before(writeMsgUntil) {
+		tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 116, writeMsg, green)
 	}
 }
 
@@ -540,6 +623,15 @@ func configurePage(p int) error {
 		return dev.ConfigureA(ctx)
 	}
 	return nil
+}
+
+func drawWriting(msg string) {
+	fb.clear()
+	tinyfont.WriteLine(&fb, &freemono.Bold9pt7b, 4, 14, "UNIT NFC", cyan)
+	fb.fillRect(0, 18, screenW, 1, darkGray)
+	tinyfont.WriteLine(&fb, &freemono.Bold9pt7b, 4, 56, msg, yellow)
+	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 78, "nao remova o cartao", white)
+	fb.flush()
 }
 
 func drawBoot(msg string) {

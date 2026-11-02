@@ -45,6 +45,16 @@ github.com/nicolasmmb/M5Unit-NFC-Go v0.4.0 h1:52NUeJZsLI9E6JwLn/rCOaETjSvaUHfHVF
 github.com/nicolasmmb/M5Unit-NFC-Go v0.4.0/go.mod h1:Ybo6TOtphNj0/eIFzO7tciOvItVzVynz85a1SHrsMjQ=
 github.com/nicolasmmb/M5Unit-NFC-Go v0.5.0 h1:Se2W4mtuey+ZFwW981stl6OkamINpAKAVndIUQOKyrk=
 github.com/nicolasmmb/M5Unit-NFC-Go v0.5.0/go.mod h1:Ybo6TOtphNj0/eIFzO7tciOvItVzVynz85a1SHrsMjQ=
+github.com/nicolasmmb/M5Unit-NFC-Go v0.6.0 h1:R5f5Q5nCooSwtQoKYjlRxcBs6s2AWpLFDpd82fTYTs0=
+github.com/nicolasmmb/M5Unit-NFC-Go v0.6.0/go.mod h1:Ybo6TOtphNj0/eIFzO7tciOvItVzVynz85a1SHrsMjQ=
+github.com/nicolasmmb/M5Unit-NFC-Go v0.6.1 h1:NHGrwFRIvYmD5vqimCFBO2E3xwdZw1WEsiqU254WyDg=
+github.com/nicolasmmb/M5Unit-NFC-Go v0.6.1/go.mod h1:Ybo6TOtphNj0/eIFzO7tciOvItVzVynz85a1SHrsMjQ=
+github.com/nicolasmmb/M5Unit-NFC-Go v0.6.2 h1:8pMlmdtIpDRAPPBFzqLTxiwzS5uwErOMcCrfGAsZshY=
+github.com/nicolasmmb/M5Unit-NFC-Go v0.6.2/go.mod h1:Ybo6TOtphNj0/eIFzO7tciOvItVzVynz85a1SHrsMjQ=
+github.com/nicolasmmb/M5Unit-NFC-Go v0.6.3 h1:ULru7iJVMtn/lDqkXvXLNVFhyAciggovgeqk3d9+13g=
+github.com/nicolasmmb/M5Unit-NFC-Go v0.6.3/go.mod h1:Ybo6TOtphNj0/eIFzO7tciOvItVzVynz85a1SHrsMjQ=
+github.com/nicolasmmb/M5Unit-NFC-Go v0.6.4 h1:2Oq+2YK9c5mp/TfvU1QnevsH815u5/9C4YZNMaL5ezI=
+github.com/nicolasmmb/M5Unit-NFC-Go v0.6.4/go.mod h1:Ybo6TOtphNj0/eIFzO7tciOvItVzVynz85a1SHrsMjQ=
 github.com/nicolasmmb/M5Unit-ToF90-Go v0.1.0 h1:bWmKNp4QoPIaewykufu+Cj82G3zzwS6cwLNtvbWFyEA=
 github.com/nicolasmmb/M5Unit-ToF90-Go v0.1.0/go.mod h1:KC+HK4fAEqvf0qkSEALejVwvpJqvfBrPPvUHj4jmQIk=
 github.com/nicolasmmb/M5Unit-ToF90-Go v0.1.1 h1:x9QdM0QtTZeAxEzSWWDmPGbAxM6TjFl1S/T9Jx30mwo=

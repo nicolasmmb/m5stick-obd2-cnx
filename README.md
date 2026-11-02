@@ -596,7 +596,7 @@ Probe NFC-A do **Unit NFC** (SKU U216, ST25R3916):
 - Grove **I2C1: SDA=G32, SCL=G33**, endereço **0x50**, 400 kHz. Um unit por
   vez no Grove.
 - Driver puro Go separado:
-  [M5Unit-NFC-Go](https://github.com/nicolasmmb/M5Unit-NFC-Go) v0.5.0 —
+  [M5Unit-NFC-Go](https://github.com/nicolasmmb/M5Unit-NFC-Go) v0.6.4 —
   init completo do ST25R3916, ativação NFC-A (REQA/WUPA, anticolisão, SELECT),
   **0 alocações** por detecção.
 - **Uma tela por protocolo** (**C** cicla): **NFC-A**, **NFC-F**, **NFC-B**,
@@ -607,13 +607,19 @@ Probe NFC-A do **Unit NFC** (SKU U216, ST25R3916):
 - NFC-A mostra UID/tipo/ATQA/SAK/memória; NFC-F mostra IDm/PMm; NFC-B mostra
   PUPI/APPL/PROTO; NFC-V mostra UID/DSFID; **T2** lê a página 4; **CL** autentica
   com chave A de fábrica e lê o bloco 1 (MIFARE Classic).
+- **Escrita** nas telas T2/CL: **B duas vezes** (a primeira arma, a segunda
+  grava). T2 grava a página 4; CL grava o bloco 1 (nunca UID/lock/trailer),
+  sempre com verificação de leitura de volta.
 - Fase 1: **NFC-A + NFC-F + NFC-B**. Validado no hardware: cartões ISO14443-4
   (UID de 4 e 7 bytes, SAK 0x20) e **FeliCa (NFC-F)** — IDm/PMm lidos em
   ~10 ms, 0 erros de I2C. A tela NFC-B está pronta para tags ISO14443-B.
 - NFC-V implementado (ISO15693); validação pendente de tag ISO15693.
-- **MIFARE Classic validado no hardware**: UID `0A EE 8D 02`, auth chave A OK,
-  bloco 1 lido. Type 2 (T2) pendente de cartão NTAG/Ultralight.
-- Escrita, NDEF e emulação entram nas próximas fases.
+- **MIFARE Classic validado no hardware (leitura)**: UID `0A EE 8D 02`,
+  auth chave A OK, bloco 1 lido. A **gravação** está implementada (com
+  verificação e erros por fase), mas a confirmação no hardware ainda está
+  pendente; o disparo por B 2× precisa de mais um teste.
+- Type 2 (T2) pendente de cartão NTAG/Ultralight.
+- NDEF e emulação entram nas próximas fases.
 
 ## Zed (autocomplete e diagnósticos)
 
