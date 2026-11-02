@@ -2,11 +2,10 @@ package main
 
 import (
 	"machine"
-	"strings"
 	"sync/atomic"
 	"time"
 
-	"m5stick-obd2-cnx/internal/obdwire"
+	"m5stick-obd2-cnx/internal/obdline"
 )
 
 type Mode uint8
@@ -19,31 +18,41 @@ const (
 var appMode = ModeLive
 
 type SerialLink struct {
-	buf     []byte
+	buf     [2048]byte
+	n       int
 	invalid int
 }
 
 var serialLink = &SerialLink{}
 
+// Poll drains the serial port into a fixed buffer and applies every complete
+// line. The buffer is reused, so replay does not allocate per record.
 func (s *SerialLink) Poll() {
-	n := machine.Serial.Buffered()
-	if n > 0 {
-		var tmp [64]byte
-		if n > len(tmp) {
-			n = len(tmp)
-		}
-		m, _ := machine.Serial.Read(tmp[:n])
-		s.buf = append(s.buf, tmp[:m]...)
-		if len(s.buf) > 2048 {
-			s.buf = s.buf[:0]
+	for {
+		space := len(s.buf) - s.n
+		if space == 0 {
+			s.n = 0
 			s.invalid++
+			break
 		}
+		n := machine.Serial.Buffered()
+		if n <= 0 {
+			break
+		}
+		if n > space {
+			n = space
+		}
+		m, _ := machine.Serial.Read(s.buf[s.n : s.n+n])
+		if m <= 0 {
+			break
+		}
+		s.n += m
 	}
 
 	for {
 		i := -1
-		for j, b := range s.buf {
-			if b == '\n' {
+		for j := 0; j < s.n; j++ {
+			if s.buf[j] == '\n' {
 				i = j
 				break
 			}
@@ -51,36 +60,39 @@ func (s *SerialLink) Poll() {
 		if i < 0 {
 			break
 		}
-		line := strings.TrimSpace(string(s.buf[:i]))
-		s.buf = s.buf[i+1:]
-		if line == "" {
-			continue
-		}
-		cmd, err := obdwire.ParseCommand(line)
-		if err != nil {
+		line, ok := obdline.Parse(s.buf[:i])
+		if ok {
+			s.handle(line)
+		} else {
 			s.invalid++
-			continue
 		}
-		switch cmd.Kind {
-		case obdwire.KindAck:
-			atomic.StoreInt64(&serialAckNano, time.Now().UnixNano())
-		case obdwire.KindReplay:
-			adapter.StopScan()
-			appMode = ModeReplay
-			resetReplayValues()
-			uiPaused = false
-			page = 1
-			dirtyAll = true
-			bleState = bleOff
-			elmState = elmWait
-		case obdwire.KindLive:
-			adapter.StopScan()
-			appMode = ModeLive
-			dirtyAll = true
-		case obdwire.KindClear:
-			resetReplayValues()
-		case obdwire.KindRecord:
-			applyReplayRecord(cmd.Record)
-		}
+		copy(s.buf[:], s.buf[i+1:s.n])
+		s.n -= i + 1
+	}
+}
+
+func (s *SerialLink) handle(line obdline.Line) {
+	switch line.Kind {
+	case obdline.KindAck:
+		atomic.StoreInt64(&serialAckNano, time.Now().UnixNano())
+	case obdline.KindReplay:
+		bleStopScan()
+		appMode = ModeReplay
+		resetReplayValues()
+		uiPaused = false
+		page = 1
+		dirtyAll = true
+		bleState = bleOff
+		elmState = elmWait
+		println("K,REPLAY")
+	case obdline.KindLive:
+		bleStopScan()
+		appMode = ModeLive
+		dirtyAll = true
+		println("K,LIVE")
+	case obdline.KindClear:
+		resetReplayValues()
+	case obdline.KindRecord:
+		applyReplayRecord(line.Rec)
 	}
 }
