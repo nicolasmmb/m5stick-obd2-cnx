@@ -2,28 +2,20 @@
 
 Tela 240×135, landscape. A UI usa framebuffer 4bpp e flush de linhas alteradas.
 
-## Grade calculada
+## Área útil
+
+Para evitar corte de texto nas bordas:
 
 ```text
-availW = screenW - 2*margin - (cols-1)*gap
-availH = screenH - 2*margin - (rows-1)*gap
-side   = min(availW/cols, availH/rows)
-gridW  = cols*side + (cols-1)*gap
-gridH  = rows*side + (rows-1)*gap
-x0     = (screenW - gridW)/2
-y0     = (screenH - gridH)/2
-```
-
-Parâmetros atuais:
-
-```text
-margin = 2
-gap    = 2
+inset = 1 px em cada lado
+conteúdo = 238 × 130
+gap = 2 px
+footer = 2 px para os indicadores de página
 ```
 
 ## Página 1 — STATUS
 
-Grade **3×2 = 6 quadrados iguais**.
+Ocupa a tela inteira em **3 colunas × 2 linhas**, com 6 tiles de status.
 
 ```text
 ┌────────┬────────┬────────┐
@@ -33,48 +25,58 @@ Grade **3×2 = 6 quadrados iguais**.
 └────────┴────────┴────────┘
 ```
 
-| Tile | Valor |
-|---|---|
-| BLE | ON/OFF |
-| ELM | OK/ERR |
-| PID/s | taxa de amostras |
-| TX | linhas enviadas |
-| ERR | erros/timeouts |
-| UPTIME | hh:mm |
+| Tile | Ícone | Valor |
+|---|---|---|
+| BLE | barras de sinal | ON/OFF |
+| ELM | elo/conector | OK/ERR |
+| PID/s | barras | taxa |
+| TX | seta | linhas enviadas |
+| ERR | exclamação | erros |
+| UPTIME | relógio | hh:mm |
 
-Cores: verde = OK, vermelho = erro, cinza = inativo.
+Cores:
+
+- verde = ok;
+- vermelho = erro;
+- ciano/azul = informação;
+- âmbar = transmissão;
+- cinza = inativo.
 
 ## Página 2 — DADOS
 
-Grade **3×1**. Os quadrados ficam maiores e centralizados.
+Layout assimétrico para usar a tela inteira:
 
 ```text
-┌──────────┬──────────┬──────────┐
-│   VEL    │   RPM    │  COMB    │
-│    0     │  1120    │   25.0   │
-│   km/h   │   rpm    │    L     │
-└──────────┴──────────┴──────────┘
+┌──────────────────┬──────────────────┐
+│    VELOCIDADE    │       RPM        │
+│        0         │      1120        │
+│       km/h       │       rpm        │
+├──────────────────┴──────────────────┤
+│ COMBUSTIVEL        25.0 L      58%  │
+│ ███████████████░░░░░░░░░░░░░░░░░░░  │
+└─────────────────────────────────────┘
 ```
 
-- velocidade em km/h;
-- RPM;
-- combustível em litros (`% * 44 L`).
+- velocidade e RPM em dois tiles grandes;
+- combustível em um tile largo embaixo;
+- barra de combustível usa a largura disponível;
+- ícones de velocímetro e bomba.
 
-O valor usa `Bold18` ou `Bold12` se não couber. O texto é centralizado com
-`tinyfont.LineWidth`.
+## Tipografia
+
+- valores grandes: `Bold18`;
+- se não couber: `Bold12`;
+- labels/unidades: `Proggy Tiny`.
+- Todo texto é centralizado com `tinyfont.LineWidth`.
 
 ## Botões
 
 - **A** = próxima página.
 - **B** = página anterior.
-- **C** não é usado (evita desligar o Stick).
-
-## Page indicator
-
-Dois pontinhos no rodapé; o ativo fica branco.
+- **C** não é usado para evitar desligar o Stick.
 
 ## Atualização
 
 - página redesenhada a cada ~500 ms;
 - troca de página imediata;
-- framebuffer evita o “apaga e desenha” visível.
+- framebuffer evita flicker/ghosting.

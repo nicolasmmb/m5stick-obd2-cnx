@@ -202,7 +202,7 @@ Mais detalhes em **[docs/OBD2-DATA-CATALOG.md](docs/OBD2-DATA-CATALOG.md)**.
 | obd-bench | 300 KB | 19,3 KB |
 | obd-tune | 295 KB | 19,3 KB |
 | obd-display | 292 KB | 72,8 KB (16,2 KB de framebuffer) |
-| obd-logger | 293 KB | 60,4 KB (16,2 KB de framebuffer) |
+| obd-logger | 295 KB | 60,4 KB (16,2 KB de framebuffer) |
 
 ## Ambiente
 

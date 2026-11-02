@@ -18,6 +18,9 @@ const (
 	screenW  = 240
 	screenH  = 135
 	bandRows = 24
+	inset    = 1
+	gap      = 2
+	contentH = screenH - inset*2 - 3
 )
 
 var (
@@ -25,15 +28,24 @@ var (
 	fb      [screenW * screenH / 2]byte
 	lineBuf [screenW * bandRows * 2]byte
 
-	black = color.RGBA{0, 0, 0, 255}
-	white = color.RGBA{235, 235, 235, 255}
-	gray  = color.RGBA{80, 80, 80, 255}
-	cyan  = color.RGBA{0, 220, 220, 255}
-	green = color.RGBA{0, 220, 90, 255}
-	red   = color.RGBA{255, 80, 80, 255}
-	amber = color.RGBA{255, 180, 0, 255}
+	black     = color.RGBA{0, 0, 0, 255}
+	white     = color.RGBA{235, 235, 235, 255}
+	gray      = color.RGBA{80, 80, 80, 255}
+	cyan      = color.RGBA{0, 220, 220, 255}
+	green     = color.RGBA{0, 220, 90, 255}
+	red       = color.RGBA{255, 80, 80, 255}
+	amber     = color.RGBA{255, 180, 0, 255}
+	blue      = color.RGBA{80, 160, 255, 255}
+	panel     = color.RGBA{22, 26, 34, 255}
+	darkGreen = color.RGBA{0, 55, 32, 255}
+	darkRed   = color.RGBA{70, 18, 18, 255}
+	darkAmber = color.RGBA{70, 48, 0, 255}
+	darkCyan  = color.RGBA{0, 50, 60, 255}
 
-	palette = [...]color.RGBA{black, white, gray, cyan, green, red, amber}
+	palette = [...]color.RGBA{
+		black, white, gray, cyan, green, red, amber,
+		blue, panel, darkGreen, darkRed, darkAmber, darkCyan,
+	}
 
 	page int
 
@@ -52,6 +64,17 @@ var (
 	latestRPM   int
 	latestFuel  float64
 	lastDraw    time.Time
+)
+
+const (
+	iconBLE = iota
+	iconLink
+	iconRate
+	iconTx
+	iconErr
+	iconClock
+	iconGauge
+	iconFuel
 )
 
 type rect struct {
@@ -158,13 +181,25 @@ func drawPage() {
 	lastDraw = time.Now()
 }
 
+func innerRect() rect {
+	return rect{inset, inset, screenW - 2*inset, contentH}
+}
+
 func drawStatusPage() {
-	g := grid(3, 2)
+	in := innerRect()
+	rowH := (in.h - gap) / 2
+	colW := (in.w - 2*gap) / 3
+	// distribute the rounding pixels to the first tiles
+	w3 := in.w - 2*colW - 2*gap
+	if w3 < colW {
+		colW--
+		w3 = in.w - 2*colW - 2*gap
+	}
+	h2 := in.h - rowH - gap
 	rate := 0.0
 	if !started.IsZero() {
-		secs := time.Since(started).Seconds()
-		if secs > 0 {
-			rate = float64(samples) / secs
+		if s := time.Since(started).Seconds(); s > 0 {
+			rate = float64(samples) / s
 		}
 	}
 	up := "00:00"
@@ -172,46 +207,84 @@ func drawStatusPage() {
 		d := time.Since(started)
 		up = pad2(int(d/time.Minute)) + ":" + pad2(int((d/time.Second)%60))
 	}
-	drawTile(tileRect(g, 0, 0), "BLE", onOff(bleOK), statusColor(bleOK))
-	drawTile(tileRect(g, 1, 0), "ELM", yesNo(elmOK), statusColor(elmOK))
-	drawTile(tileRect(g, 2, 0), "PID/s", strconv.FormatFloat(rate, 'f', 1, 64), cyan)
-	drawTile(tileRect(g, 0, 1), "TX", strconv.Itoa(txLines), white)
-	drawTile(tileRect(g, 1, 1), "ERR", strconv.Itoa(errCount), errColor())
-	drawTile(tileRect(g, 2, 1), "TIME", up, white)
+
+	bleFill, bleAccent := panel, red
+	if bleOK {
+		bleFill, bleAccent = darkGreen, green
+	}
+	elmFill, elmAccent := panel, red
+	if elmOK {
+		elmFill, elmAccent = darkCyan, cyan
+	}
+	errCol := green
+	errFill := panel
+	if errCount > 0 {
+		errCol = red
+		errFill = darkRed
+	}
+
+	drawStatusTile(rect{in.x, in.y, colW, rowH}, iconBLE, "BLE", onOff(bleOK), bleFill, bleAccent)
+	drawStatusTile(rect{in.x + colW + gap, in.y, colW, rowH}, iconLink, "ELM", yesNo(elmOK), elmFill, elmAccent)
+	drawStatusTile(rect{in.x + 2*(colW+gap), in.y, w3, rowH}, iconRate, "PID/s", strconv.FormatFloat(rate, 'f', 1, 64), panel, cyan)
+	drawStatusTile(rect{in.x, in.y + rowH + gap, colW, h2}, iconTx, "TX", strconv.Itoa(txLines), darkAmber, amber)
+	drawStatusTile(rect{in.x + colW + gap, in.y + rowH + gap, colW, h2}, iconErr, "ERR", strconv.Itoa(errCount), errFill, errCol)
+	drawStatusTile(rect{in.x + 2*(colW+gap), in.y + rowH + gap, w3, h2}, iconClock, "UPTIME", up, panel, white)
+}
+
+func drawStatusTile(r rect, icon int, label, value string, fill, accent color.RGBA) {
+	fillRect(r.x, r.y, r.w, r.h, fill)
+	fillRect(r.x, r.y, r.w, 2, accent)
+	drawIcon(icon, r.x+7, r.y+9, accent)
+	text(&proggy.TinySZ8pt7b, r.x+22, r.y+16, label, gray)
+	drawFitCentered(r, r.y+48, value, accent)
 }
 
 func drawDataPage() {
-	g := grid(3, 1)
-	drawDataTile(tileRect(g, 0, 0), "VEL", strconv.Itoa(latestSpeed), "km/h", cyan)
-	drawDataTile(tileRect(g, 1, 0), "RPM", strconv.Itoa(latestRPM), "rpm", white)
-	fuel := "0.0"
+	in := innerRect()
+	topH := int16(65)
+	topW := (in.w - gap) / 2
+	bottomY := in.y + topH + gap
+	bottomH := in.h - topH - gap
+
+	drawDataTile(rect{in.x, in.y, topW, topH}, iconGauge, "VELOCIDADE", strconv.Itoa(latestSpeed), "km/h", cyan)
+	drawDataTile(rect{in.x + topW + gap, in.y, topW, topH}, iconGauge, "RPM", strconv.Itoa(latestRPM), "rpm", white)
+	drawFuelTile(rect{in.x, bottomY, in.w, bottomH})
+}
+
+func drawDataTile(r rect, icon int, label, value, unit string, c color.RGBA) {
+	fillRect(r.x, r.y, r.w, r.h, panel)
+	fillRect(r.x, r.y, r.w, 2, c)
+	drawIcon(icon, r.x+8, r.y+9, c)
+	text(&proggy.TinySZ8pt7b, r.x+24, r.y+16, label, gray)
+	drawFitCentered(r, r.y+45, value, c)
+	textCentered(&proggy.TinySZ8pt7b, r, r.y+59, unit, gray)
+}
+
+func drawFuelTile(r rect) {
+	fillRect(r.x, r.y, r.w, r.h, panel)
+	fillRect(r.x, r.y, r.w, 2, green)
+	drawIcon(iconFuel, r.x+8, r.y+9, green)
+	text(&proggy.TinySZ8pt7b, r.x+24, r.y+16, "COMBUSTIVEL", gray)
+	val := "--"
+	pct := 0
 	if latestFuel >= 0 {
-		fuel = strconv.FormatFloat(latestFuel*0.44, 'f', 1, 64)
+		pct = int(latestFuel)
+		val = strconv.FormatFloat(latestFuel*0.44, 'f', 1, 64) + " L"
 	}
-	drawDataTile(tileRect(g, 2, 0), "COMB", fuel, "L", green)
+	text(&freemono.Bold18pt7b, r.x+70, r.y+42, val, green)
+	text(&proggy.TinySZ8pt7b, r.x+190, r.y+42, strconv.Itoa(pct)+"%", gray)
+	fillRect(r.x+12, r.y+50, r.w-24, 6, gray)
+	if pct > 0 {
+		fillRect(r.x+12, r.y+50, int16(int(r.w-24)*pct/100), 6, green)
+	}
 }
 
-func drawTile(r rect, label, value string, c color.RGBA) {
-	fillRect(r.x, r.y, r.w, r.h, black)
-	drawBorder(r, gray)
-	textCentered(&proggy.TinySZ8pt7b, r, r.y+14, label, gray)
+func drawFitCentered(r rect, baseline int16, s string, c color.RGBA) {
 	f := tinyfont.Fonter(&freemono.Bold18pt7b)
-	if textWidth(f, value)+4 > r.w {
+	if textWidth(f, s)+8 > r.w {
 		f = &freemono.Bold12pt7b
 	}
-	textCentered(f, r, r.y+40, value, c)
-}
-
-func drawDataTile(r rect, label, value, unit string, c color.RGBA) {
-	fillRect(r.x, r.y, r.w, r.h, black)
-	drawBorder(r, gray)
-	textCentered(&proggy.TinySZ8pt7b, r, r.y+14, label, gray)
-	f := tinyfont.Fonter(&freemono.Bold18pt7b)
-	if textWidth(f, value)+4 > r.w {
-		f = &freemono.Bold12pt7b
-	}
-	textCentered(f, r, r.y+42, value, c)
-	textCentered(&proggy.TinySZ8pt7b, r, r.y+58, unit, gray)
+	textCentered(f, r, baseline, s, c)
 }
 
 func drawPageDots() {
@@ -221,51 +294,118 @@ func drawPageDots() {
 		if i == page {
 			c = white
 		}
-		fillRect(x+int16(i*10), screenH-3, 4, 2, c)
+		fillRect(x+int16(i*10), screenH-2, 4, 2, c)
 	}
 }
 
-func drawBorder(r rect, c color.RGBA) {
-	fillRect(r.x, r.y, r.w, 1, c)
-	fillRect(r.x, r.bottom()-1, r.w, 1, c)
-	fillRect(r.x, r.y, 1, r.h, c)
-	fillRect(r.x+r.w-1, r.y, 1, r.h, c)
-}
-
-type gridSpec struct {
-	cols, rows int16
-	side       int16
-	x0, y0     int16
-	gap        int16
-}
-
-func grid(cols, rows int16) gridSpec {
-	const margin int16 = 2
-	const gap int16 = 2
-	aw := int16(screenW) - 2*margin - (cols-1)*gap
-	ah := int16(screenH) - 2*margin - (rows-1)*gap
-	side := aw / cols
-	if v := ah / rows; v < side {
-		side = v
+func drawIcon(kind int, x, y int16, c color.RGBA) {
+	switch kind {
+	case iconBLE:
+		fillRect(x+0, y+6, 2, 4, c)
+		fillRect(x+4, y+3, 2, 7, c)
+		fillRect(x+8, y+0, 2, 10, c)
+	case iconLink:
+		drawRectOutline(x, y+1, 6, 5, c)
+		drawRectOutline(x+4, y+5, 6, 5, c)
+		fillRect(x+5, y+4, 2, 2, c)
+	case iconRate:
+		fillRect(x+0, y+7, 2, 3, c)
+		fillRect(x+4, y+4, 2, 6, c)
+		fillRect(x+8, y+0, 2, 10, c)
+	case iconTx:
+		fillRect(x+4, y+2, 2, 9, c)
+		drawLine(x+4, y+2, x+1, y+5, c)
+		drawLine(x+5, y+2, x+8, y+5, c)
+	case iconErr:
+		fillRect(x+4, y+0, 2, 7, c)
+		fillRect(x+4, y+8, 2, 2, c)
+	case iconClock:
+		drawCircle(x+5, y+5, 4, c)
+		drawLine(x+5, y+5, x+5, y+2, c)
+		drawLine(x+5, y+5, x+8, y+6, c)
+	case iconGauge:
+		drawCircle(x+5, y+5, 4, c)
+		drawLine(x+5, y+5, x+8, y+2, c)
+		fillRect(x+4, y+4, 3, 2, c)
+	case iconFuel:
+		drawRectOutline(x+1, y+1, 6, 9, c)
+		fillRect(x+7, y+2, 2, 5, c)
+		fillRect(x+9, y+3, 1, 4, c)
 	}
-	gw := cols*side + (cols-1)*gap
-	gh := rows*side + (rows-1)*gap
-	return gridSpec{cols, rows, side, (int16(screenW) - gw) / 2, (int16(screenH) - gh) / 2, gap}
 }
 
-func tileRect(g gridSpec, col, row int16) rect {
-	return rect{g.x0 + col*(g.side+g.gap), g.y0 + row*(g.side+g.gap), g.side, g.side}
+func drawRectOutline(x, y, w, h int16, c color.RGBA) {
+	fillRect(x, y, w, 1, c)
+	fillRect(x, y+h-1, w, 1, c)
+	fillRect(x, y, 1, h, c)
+	fillRect(x+w-1, y, 1, h, c)
+}
+
+func drawLine(x0, y0, x1, y1 int16, c color.RGBA) {
+	dx := abs16(x1 - x0)
+	dy := -abs16(y1 - y0)
+	sx := int16(-1)
+	if x0 < x1 {
+		sx = 1
+	}
+	sy := int16(-1)
+	if y0 < y1 {
+		sy = 1
+	}
+	err := dx + dy
+	for {
+		fillRect(x0, y0, 1, 1, c)
+		if x0 == x1 && y0 == y1 {
+			break
+		}
+		e2 := 2 * err
+		if e2 >= dy {
+			err += dy
+			x0 += sx
+		}
+		if e2 <= dx {
+			err += dx
+			y0 += sy
+		}
+	}
+}
+
+func drawCircle(cx, cy, r int16, c color.RGBA) {
+	x := r
+	y := int16(0)
+	err := int16(1) - r
+	for x >= y {
+		pixel4(cx, cy, x, y, c)
+		y++
+		if err < 0 {
+			err += 2*y + 1
+		} else {
+			x--
+			err += 2*(y-x) + 1
+		}
+	}
+}
+
+func pixel4(cx, cy, x, y int16, c color.RGBA) {
+	fillRect(cx+x, cy+y, 1, 1, c)
+	fillRect(cx-x, cy+y, 1, 1, c)
+	fillRect(cx+x, cy-y, 1, 1, c)
+	fillRect(cx-x, cy-y, 1, 1, c)
+	fillRect(cx+y, cy+x, 1, 1, c)
+	fillRect(cx-y, cy+x, 1, 1, c)
+	fillRect(cx+y, cy-x, 1, 1, c)
+	fillRect(cx-y, cy-x, 1, 1, c)
+}
+
+func abs16(v int16) int16 {
+	if v < 0 {
+		return -v
+	}
+	return v
 }
 
 func statusColor(ok bool) color.RGBA {
 	if ok {
-		return green
-	}
-	return red
-}
-
-func errColor() color.RGBA {
-	if errCount == 0 {
 		return green
 	}
 	return red

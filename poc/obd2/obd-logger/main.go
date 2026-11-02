@@ -89,10 +89,26 @@ func main() {
 	println("obd-logger: starting")
 	if err := adapter.Enable(); err != nil {
 		println("enable failed:", err.Error())
-		return
+		for {
+			tickUI()
+			time.Sleep(200 * time.Millisecond)
+		}
 	}
 	adapter.SetScanType(bluetooth.ScanTypeActive)
 
+	for {
+		err := runSession()
+		bleOK = false
+		elmOK = false
+		drawPage()
+		if err != nil {
+			println("obd-logger:", err.Error())
+		}
+		waitUI(5 * time.Second)
+	}
+}
+
+func runSession() error {
 	var addr bluetooth.Address
 	found := false
 	done := make(chan struct{})
@@ -100,6 +116,20 @@ func main() {
 		time.Sleep(10 * time.Second)
 		adapter.StopScan()
 		close(done)
+	}()
+	uiStop := make(chan struct{})
+	uiDone := make(chan struct{})
+	go func() {
+		defer close(uiDone)
+		for {
+			select {
+			case <-uiStop:
+				return
+			default:
+				tickUI()
+				time.Sleep(150 * time.Millisecond)
+			}
+		}
 	}()
 	err := adapter.Scan(func(_ *bluetooth.Adapter, r bluetooth.ScanResult) {
 		if found {
@@ -112,29 +142,28 @@ func main() {
 			adapter.StopScan()
 		}
 	})
+	close(uiStop)
+	<-uiDone
 	if err != nil {
-		println("scan failed:", err.Error())
+		<-done
+		return err
 	}
 	<-done
 	if !found {
-		println("obd-logger: no OBDII BLE device found")
-		return
+		return &simpleError{"no OBDII BLE device found"}
 	}
 
 	dev, err := adapter.Connect(addr, bluetooth.ConnectionParams{})
 	if err != nil {
-		println("connect failed:", err.Error())
-		return
+		return err
 	}
 	services, err := dev.DiscoverServices([]bluetooth.UUID{uuidFFF0})
 	if err != nil {
-		println("service failed:", err.Error())
-		return
+		return err
 	}
 	chars, err := services[0].DiscoverCharacteristics([]bluetooth.UUID{uuidFFF1, uuidFFF2})
 	if err != nil {
-		println("char failed:", err.Error())
-		return
+		return err
 	}
 	notifyChar := chars[0]
 	writeChar := chars[1]
@@ -143,8 +172,7 @@ func main() {
 		rx = append(rx, buf...)
 		mu.Unlock()
 	}); err != nil {
-		println("notify failed:", err.Error())
-		return
+		return err
 	}
 	bleOK = true
 	drawPage()
@@ -152,8 +180,7 @@ func main() {
 	e := &elm{write: writeChar}
 	for _, cmd := range []string{"ATZ", "ATE0", "ATL0", "ATS0", "ATSP0"} {
 		if _, err := e.command(cmd, 3*time.Second); err != nil {
-			println("handshake failed:", cmd, err.Error())
-			return
+			return &simpleError{"handshake " + cmd + ": " + err.Error()}
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
@@ -162,16 +189,13 @@ func main() {
 
 	vin := readVIN(e)
 	start := time.Now()
-	seq := uint64(0)
 	cycle := 0
-
 	emitStart(vin)
 	drawPage()
 
 	for {
 		for _, p := range fastPIDs {
-			seq++
-			if !emitPID(e, p, seq, start) {
+			if !emitPID(e, p, start) {
 				time.Sleep(200 * time.Millisecond)
 			}
 			tickUI()
@@ -179,12 +203,19 @@ func main() {
 		cycle++
 		if cycle%4 == 0 {
 			for _, p := range slowPIDs {
-				seq++
-				emitPID(e, p, seq, start)
+				emitPID(e, p, start)
 				time.Sleep(20 * time.Millisecond)
 				tickUI()
 			}
 		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+func waitUI(d time.Duration) {
+	end := time.Now().Add(d)
+	for time.Now().Before(end) {
+		tickUI()
 		time.Sleep(100 * time.Millisecond)
 	}
 }
@@ -194,7 +225,7 @@ func emitStart(vin string) {
 	println("I,0,0.1," + vin + ",440")
 }
 
-func emitPID(e *elm, p pidSpec, seq uint64, start time.Time) bool {
+func emitPID(e *elm, p pidSpec, start time.Time) bool {
 	t0 := time.Now()
 	resp, err := e.command(p.cmd, 2*time.Second)
 	lat := int64(time.Since(t0) / time.Millisecond)
