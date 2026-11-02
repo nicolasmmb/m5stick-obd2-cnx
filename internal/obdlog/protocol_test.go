@@ -1,0 +1,44 @@
+package obdlog
+
+import "testing"
+
+func TestParseLine(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		typ  string
+	}{
+		{"start", `{"t":"S","v":1,"sid":"s1","vin":"ABC","tank_dl":440}`, "S"},
+		{"sample", `{"t":"P","seq":1,"ms":120,"pid":"0c","raw":"1AF8","v":1726,"u":"rpm","q":"OK","lat":138}`, "P"},
+		{"event", `{"t":"E","ms":1000,"type":"dtc","code":"P0133"}`, "E"},
+		{"end", `{"t":"X","ms":2000,"reason":"user"}`, "X"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec, err := ParseLine([]byte(tt.in))
+			if err != nil {
+				t.Fatalf("ParseLine: %v", err)
+			}
+			if rec.Type != tt.typ {
+				t.Fatalf("type = %q, want %q", rec.Type, tt.typ)
+			}
+			if rec.Type == "P" && rec.Sample.PID != "0C" {
+				t.Fatalf("pid = %q, want 0C", rec.Sample.PID)
+			}
+		})
+	}
+}
+
+func TestParseLineInvalid(t *testing.T) {
+	for _, in := range []string{
+		``,
+		`not json`,
+		`{"t":"P","ms":1,"v":1,"u":"rpm","q":"OK"}`,
+		`{"t":"P","pid":"0C","ms":1,"v":1,"q":"OK"}`,
+		`{"t":"Z"}`,
+	} {
+		if _, err := ParseLine([]byte(in)); err == nil {
+			t.Fatalf("expected error for %q", in)
+		}
+	}
+}

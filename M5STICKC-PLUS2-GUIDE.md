@@ -114,6 +114,7 @@ make obd
 make obd-client
 make obd-bench
 make obd-tune
+make obd-logger
 make obd-probe
 ```
 

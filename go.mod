@@ -7,6 +7,8 @@ require (
 	tinygo.org/x/espradio v0.5.0
 )
 
+require go.bug.st/serial v1.8.0
+
 require (
 	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
@@ -19,7 +21,7 @@ require (
 	github.com/tinygo-org/cbgo v0.1.0 // indirect
 	github.com/tinygo-org/pio v0.3.0 // indirect
 	golang.org/x/exp v0.0.0-20260727155853-b88d891fe743 // indirect
-	golang.org/x/sys v0.23.0 // indirect
+	golang.org/x/sys v0.43.0 // indirect
 	tinygo.org/x/drivers v0.37.0
 	tinygo.org/x/tinyfont v0.6.0
 )

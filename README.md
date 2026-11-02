@@ -17,6 +17,7 @@ dados do carro no LCD.
 | Handshake ELM327 | ✅ `ELM327 v2.1` |
 | PIDs Mode 01 | ✅ 43 suportados |
 | UI OBD2 | ✅ 3 páginas, sem flicker/ghosting |
+| Data loader | ✅ NDJSON → CSV long/wide; replay testado |
 | taxa | ~5–7 Hz por PID; varredura completa ~7,2 s |
 
 ## Hardware
@@ -36,6 +37,11 @@ poc/obd2/
   obd-bench/       # lista os 43 PIDs e mede latência/Hz
   obd-tune/        # compara ATAT/ATST
   obd-display/     # UI de 3 páginas no LCD
+  obd-logger/      # firmware que emite NDJSON pela serial
+
+cmd/obd-logger/    # loader host: serial/NDJSON → CSV
+internal/obdlog/   # parser NDJSON, CSV long/wide e metadados
+testdata/          # amostra NDJSON para replay
 
 examples/
   display-scan/    # referência de LCD + Wi-Fi/BLE
@@ -68,11 +74,17 @@ make obd-probe   # enumera GATT do adaptador
 make obd-client  # handshake + PIDs no serial
 make obd-bench   # benchmark dos 43 PIDs
 make obd-tune    # teste ATAT/ATST
+make obd-logger  # firmware que emite NDJSON pela serial
 
 make display     # exemplo de LCD
 make ble         # exemplo de scan BLE
 make wifi        # exemplo de scan Wi-Fi
 make hello       # smoke test
+
+make logger      # compila o loader Go em /tmp/obd-logger
+make log         # lê a serial e grava em data/
+make replay      # testa o loader com testdata/obd-logger-sample.ndjson
+make test        # testes do loader/parser
 
 make monitor     # monitor serial apenas
 ```
@@ -83,6 +95,46 @@ Direto com TinyGo:
 tinygo flash -target=m5stick-c -port=/dev/cu.usbserial-XXXX \
   -size short -monitor ./poc/obd2/obd-display
 ```
+
+## Data loader
+
+O M5Stick não armazena dados. Ele transmite **NDJSON** pela serial e o host grava
+em `data/<sessão>/`:
+
+```text
+raw.ndjson
+samples_long.csv
+samples_wide_1hz.csv
+events.jsonl
+metadata.json
+```
+
+Formato completo: **[docs/OBD2-LOGGER-FORMAT.md](docs/OBD2-LOGGER-FORMAT.md)**.
+
+Fluxo real:
+
+```bash
+make obd-logger   # grava o firmware que emite NDJSON
+# Ctrl-C para fechar o monitor serial
+make log          # abre a serial e grava em data/
+```
+
+Teste sem carro:
+
+```bash
+make replay       # usa testdata/obd-logger-sample.ndjson
+```
+
+Ou direto:
+
+```bash
+go run ./cmd/obd-logger --port=/dev/cu.usbserial-XXXX --baud=115200 --out=data
+go run ./cmd/obd-logger --replay=testdata/obd-logger-sample.ndjson --out=data
+```
+
+- `samples_long.csv`: uma linha por PID lido.
+- `samples_wide_1hz.csv`: reamostragem com último valor e `age_ms` por PID.
+- `data/` é ignorado pelo git.
 
 ## UI OBD2
 
@@ -144,6 +196,7 @@ Mais detalhes em **[docs/OBD2-DATA-CATALOG.md](docs/OBD2-DATA-CATALOG.md)**.
 | obd-bench | 300 KB | 19,3 KB |
 | obd-tune | 295 KB | 19,3 KB |
 | obd-display | 292 KB | 72,8 KB (16,2 KB de framebuffer) |
+| obd-logger | 267 KB | 19,3 KB |
 
 ## Ambiente
 

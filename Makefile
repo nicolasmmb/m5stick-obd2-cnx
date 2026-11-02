@@ -1,8 +1,9 @@
 PORT ?= /dev/cu.usbserial-5A6C0570831
 TARGET ?= m5stick-c
 TINYGO ?= tinygo
+FILE ?= testdata/obd-logger-sample.ndjson
 
-.PHONY: build check hello wifi ble display obd obd-client obd-bench obd-tune obd-probe monitor clean
+.PHONY: build check test logger log replay hello wifi ble display obd obd-client obd-bench obd-tune obd-logger obd-probe monitor clean
 
 build:
 	$(TINYGO) build -target=$(TARGET) -size short -o /tmp/m5-hello.bin ./examples/hello
@@ -14,12 +15,25 @@ build:
 	$(TINYGO) build -target=$(TARGET) -size short -o /tmp/m5-obd-bench.bin ./poc/obd2/obd-bench
 	$(TINYGO) build -target=$(TARGET) -size short -o /tmp/m5-obd-tune.bin ./poc/obd2/obd-tune
 	$(TINYGO) build -target=$(TARGET) -size short -o /tmp/m5-obd-display.bin ./poc/obd2/obd-display
+	$(TINYGO) build -target=$(TARGET) -size short -o /tmp/m5-obd-logger.bin ./poc/obd2/obd-logger
 
 check:
-	@for f in ./examples/hello/main.go ./examples/wifi-scan/main.go ./examples/ble-scan/main.go ./examples/display-scan/main.go ./poc/obd2/obd-probe/main.go ./poc/obd2/obd-client/main.go ./poc/obd2/obd-bench/main.go ./poc/obd2/obd-tune/main.go ./poc/obd2/obd-display/main.go; do \
+	@for f in ./examples/hello/main.go ./examples/wifi-scan/main.go ./examples/ble-scan/main.go ./examples/display-scan/main.go ./poc/obd2/obd-probe/main.go ./poc/obd2/obd-client/main.go ./poc/obd2/obd-bench/main.go ./poc/obd2/obd-tune/main.go ./poc/obd2/obd-display/main.go ./poc/obd2/obd-logger/main.go; do \
 		echo "gopls check $$f"; \
 		./scripts/gopls-tinygo.sh check "$$f"; \
 	done
+
+test:
+	go test ./internal/... ./cmd/...
+
+logger:
+	go build -o /tmp/obd-logger ./cmd/obd-logger
+
+log: logger
+	/tmp/obd-logger --port=$(PORT) --baud=115200 --out=data
+
+replay: logger
+	/tmp/obd-logger --replay=$(FILE) --out=data
 
 hello:
 	$(TINYGO) flash -target=$(TARGET) -port=$(PORT) -size short -monitor ./examples/hello
@@ -47,6 +61,9 @@ obd-bench:
 
 obd-tune:
 	$(TINYGO) flash -target=$(TARGET) -port=$(PORT) -size short -monitor ./poc/obd2/obd-tune
+
+obd-logger:
+	$(TINYGO) flash -target=$(TARGET) -port=$(PORT) -size short -monitor ./poc/obd2/obd-logger
 
 monitor:
 	$(TINYGO) monitor -port=$(PORT)
