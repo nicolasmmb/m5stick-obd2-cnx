@@ -183,7 +183,13 @@ data/<sessão>/
 11. Validar VIN no carro.
 12. Criar teste de hardware para A/B.
 
-### P2 — dados e ML
+### P2 — replay e dados
+
+- implementar `cmd/obd-replay` e modo REPLAY no firmware;
+- testar gravações sem o carro;
+- migrar a UI para snapshots com qualidade/idade.
+
+### P3 — dados e ML
 
 13. Converter CSV para Parquet.
 14. Criar notebook/pipeline de análise.
@@ -208,6 +214,7 @@ make check
 
 - [README](../README.md)
 - [Formato do logger](OBD2-LOGGER-FORMAT.md)
+- [Formato do replay](OBD2-REPLAY-FORMAT.md)
 - [Documentação por arquivo](logger/README.md)
 - [Layout da tela](ui-layout.md)
 - [Catálogo OBD2](OBD2-DATA-CATALOG.md)
