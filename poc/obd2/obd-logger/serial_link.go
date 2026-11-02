@@ -13,6 +13,7 @@ type Mode uint8
 const (
 	ModeLive Mode = iota
 	ModeReplay
+	ModePaused
 )
 
 var appMode = ModeLive
@@ -77,6 +78,7 @@ func (s *SerialLink) handle(line obdline.Line) {
 		atomic.StoreInt64(&serialAckNano, time.Now().UnixNano())
 	case obdline.KindReplay:
 		bleStopScan()
+		emitEnd("replay")
 		appMode = ModeReplay
 		resetReplayValues()
 		uiPaused = false
@@ -90,6 +92,15 @@ func (s *SerialLink) handle(line obdline.Line) {
 		appMode = ModeLive
 		dirtyAll = true
 		println("K,LIVE")
+	case obdline.KindStop:
+		bleStopScan()
+		emitEnd("host")
+		appMode = ModePaused
+		uiPaused = false
+		dirtyAll = true
+		bleState = bleOff
+		elmState = elmWait
+		println("K,STOP")
 	case obdline.KindClear:
 		resetReplayValues()
 	case obdline.KindRecord:
