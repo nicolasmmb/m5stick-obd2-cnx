@@ -130,6 +130,7 @@ Teste sem carro:
 
 ```bash
 make replay       # usa testdata/obd-logger-sample-compact.txt
+make replay-device FILE=data/<sessão>/raw.log  # envia replay ao Stick
 ```
 
 Ou direto:

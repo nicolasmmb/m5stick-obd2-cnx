@@ -2,8 +2,9 @@ PORT ?= /dev/cu.usbserial-5A6C0559481
 TARGET ?= m5stick-c
 TINYGO ?= tinygo
 FILE ?= testdata/obd-logger-sample-compact.txt
+SPEED ?= 1
 
-.PHONY: build check test logger log replay hello wifi ble display obd obd-client obd-bench obd-tune obd-logger obd-probe monitor clean
+.PHONY: build check test logger log replay replay-device hello wifi ble display obd obd-client obd-bench obd-tune obd-logger obd-probe monitor clean
 
 build:
 	$(TINYGO) build -target=$(TARGET) -size short -o /tmp/m5-hello.bin ./examples/hello
@@ -34,6 +35,9 @@ log: logger
 
 replay: logger
 	/tmp/obd-logger --replay=$(FILE) --out=data
+
+replay-device:
+	go run ./cmd/obd-replay --port=$(PORT) --file=$(FILE) --speed=$(SPEED)
 
 hello:
 	$(TINYGO) flash -target=$(TARGET) -port=$(PORT) -size short -monitor ./examples/hello
