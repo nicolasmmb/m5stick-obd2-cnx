@@ -80,6 +80,11 @@ func main() {
 	hold.Configure(machine.PinConfig{Mode: machine.PinOutput})
 	hold.High()
 
+	initDisplay()
+	initButtons()
+	started = time.Now()
+	drawPage()
+
 	time.Sleep(time.Second)
 	println("obd-logger: starting")
 	if err := adapter.Enable(); err != nil {
@@ -141,6 +146,8 @@ func main() {
 		println("notify failed:", err.Error())
 		return
 	}
+	bleOK = true
+	drawPage()
 
 	e := &elm{write: writeChar}
 	for _, cmd := range []string{"ATZ", "ATE0", "ATL0", "ATS0", "ATSP0"} {
@@ -150,6 +157,8 @@ func main() {
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
+	elmOK = true
+	drawPage()
 
 	vin := readVIN(e)
 	start := time.Now()
@@ -157,6 +166,7 @@ func main() {
 	cycle := 0
 
 	emitStart(vin)
+	drawPage()
 
 	for {
 		for _, p := range fastPIDs {
@@ -164,6 +174,7 @@ func main() {
 			if !emitPID(e, p, seq, start) {
 				time.Sleep(200 * time.Millisecond)
 			}
+			tickUI()
 		}
 		cycle++
 		if cycle%4 == 0 {
@@ -171,6 +182,7 @@ func main() {
 				seq++
 				emitPID(e, p, seq, start)
 				time.Sleep(20 * time.Millisecond)
+				tickUI()
 			}
 		}
 		time.Sleep(100 * time.Millisecond)
@@ -178,12 +190,8 @@ func main() {
 }
 
 func emitStart(vin string) {
-	s := `{"t":"S","v":1,"fw":"0.1","tank_dl":440`
-	if vin != "" {
-		s += `,"vin":"` + vin + `"`
-	}
-	s += "}"
-	println(s)
+	txLines++
+	println("I,0,0.1," + vin + ",440")
 }
 
 func emitPID(e *elm, p pidSpec, seq uint64, start time.Time) bool {
@@ -193,31 +201,39 @@ func emitPID(e *elm, p pidSpec, seq uint64, start time.Time) bool {
 	ms := int64(time.Since(start) / time.Millisecond)
 
 	if err != nil || strings.Contains(resp, "NO DATA") {
-		println(`{"t":"E","ms":` + strconv.FormatInt(ms, 10) +
-			`,"type":"no_data","pid":"` + p.pid + `","lat":` + strconv.FormatInt(lat, 10) + `}`)
+		errCount++
+		txLines++
+		println("E," + strconv.FormatInt(ms, 10) + ",NO_DATA," + p.pid)
 		return false
 	}
 
 	data, ok := pidData(resp, p.pid)
 	if !ok {
-		println(`{"t":"E","ms":` + strconv.FormatInt(ms, 10) +
-			`,"type":"parse_error","pid":"` + p.pid + `","lat":` + strconv.FormatInt(lat, 10) + `}`)
+		errCount++
+		txLines++
+		println("E," + strconv.FormatInt(ms, 10) + ",PARSE_ERROR," + p.pid)
 		return false
 	}
 
-	v, ok := decode(p.kind, data)
-	if !ok {
-		println(`{"t":"E","ms":` + strconv.FormatInt(ms, 10) +
-			`,"type":"short_data","pid":"` + p.pid + `","lat":` + strconv.FormatInt(lat, 10) + `}`)
-		return false
+	if v, ok := decode(p.kind, data); ok {
+		setLatest(p.pid, v)
 	}
-
-	println(`{"t":"P","seq":` + strconv.FormatUint(seq, 10) +
-		`,"ms":` + strconv.FormatInt(ms, 10) +
-		`,"pid":"` + p.pid + `","raw":"` + hexBytes(data) +
-		`","v":` + strconv.FormatFloat(v, 'f', 2, 64) +
-		`,"u":"` + p.unit + `","q":"OK","lat":` + strconv.FormatInt(lat, 10) + `}`)
+	samples++
+	txLines++
+	println("P," + strconv.FormatInt(ms, 10) + "," + p.pid + "," + hexBytes(data) +
+		"," + strconv.FormatInt(lat, 10) + ",OK")
 	return true
+}
+
+func setLatest(pid string, v float64) {
+	switch pid {
+	case "0D":
+		latestSpeed = int(v)
+	case "0C":
+		latestRPM = int(v)
+	case "2F":
+		latestFuel = v
+	}
 }
 
 func decode(kind byte, d []byte) (float64, bool) {

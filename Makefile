@@ -1,7 +1,7 @@
-PORT ?= /dev/cu.usbserial-5A6C0570831
+PORT ?= /dev/cu.usbserial-5A6C0559481
 TARGET ?= m5stick-c
 TINYGO ?= tinygo
-FILE ?= testdata/obd-logger-sample.ndjson
+FILE ?= testdata/obd-logger-sample-compact.txt
 
 .PHONY: build check test logger log replay hello wifi ble display obd obd-client obd-bench obd-tune obd-logger obd-probe monitor clean
 

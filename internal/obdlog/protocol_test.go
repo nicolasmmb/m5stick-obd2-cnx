@@ -29,6 +29,55 @@ func TestParseLine(t *testing.T) {
 	}
 }
 
+func TestParseCompactLine(t *testing.T) {
+	rec, err := ParseCompactLine("P,1234,0C,1AF8,138,OK")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec.Type != "P" || rec.Sample.PID != "0C" || rec.Sample.Value != 1726 || rec.Sample.Unit != "rpm" {
+		t.Fatalf("unexpected record: %+v", rec.Sample)
+	}
+
+	rec, err = ParseCompactLine("I,0,0.1,VIN123,440")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec.Type != "S" || rec.Start.VIN != "VIN123" || rec.Start.TankDL != 440 {
+		t.Fatalf("unexpected start: %+v", rec.Start)
+	}
+
+	rec, err = ParseCompactLine("E,5000,TIMEOUT,0C")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec.Type != "E" || rec.Event.Type != "TIMEOUT" {
+		t.Fatalf("unexpected event: %+v", rec.Event)
+	}
+}
+
+func TestDecodePID(t *testing.T) {
+	tests := []struct {
+		pid  string
+		raw  string
+		want float64
+		unit string
+	}{
+		{"0C", "1AF8", 1726, "rpm"},
+		{"0D", "0A", 10, "km/h"},
+		{"05", "73", 75, "C"},
+		{"11", "50", 31.372549019607842, "%"},
+		{"42", "30FB", 12.539, "V"},
+		{"3C", "1554", 506, "C"},
+		{"44", "6D00", 0.8515625, "lambda"},
+	}
+	for _, tt := range tests {
+		got, unit, ok := DecodePID(tt.pid, tt.raw)
+		if !ok || unit != tt.unit || got != tt.want {
+			t.Fatalf("DecodePID(%s,%s) = %v %q %v, want %v %q", tt.pid, tt.raw, got, unit, ok, tt.want, tt.unit)
+		}
+	}
+}
+
 func TestParseLineInvalid(t *testing.T) {
 	for _, in := range []string{
 		``,

@@ -3,7 +3,8 @@
 
 # Display ST7789V2
 
-> POC de referência: `examples/display-scan/`.
+> POC de referência: `examples/display-scan/`. Layout do logger:
+> [../ui-layout.md](../ui-layout.md).
 
 ## Hardware
 

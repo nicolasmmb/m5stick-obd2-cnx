@@ -72,6 +72,7 @@ type Loader struct {
 	dir string
 
 	raw      *os.File
+	decoded  *os.File
 	longFile *os.File
 	long     *csv.Writer
 	wideFile *os.File
@@ -123,14 +124,18 @@ func NewLoader(opts Options) (*Loader, error) {
 		},
 	}
 
-	if l.raw, err = os.Create(filepath.Join(dir, "raw.ndjson")); err != nil {
+	if l.raw, err = os.Create(filepath.Join(dir, "raw.log")); err != nil {
+		return nil, err
+	}
+	if l.decoded, err = os.Create(filepath.Join(dir, "decoded.ndjson")); err != nil {
+		l.Close()
 		return nil, err
 	}
 	if l.events, err = os.Create(filepath.Join(dir, "events.jsonl")); err != nil {
 		l.Close()
 		return nil, err
 	}
-	if l.invalid, err = os.Create(filepath.Join(dir, "invalid.ndjson")); err != nil {
+	if l.invalid, err = os.Create(filepath.Join(dir, "invalid.log")); err != nil {
 		l.Close()
 		return nil, err
 	}
@@ -178,13 +183,16 @@ func (l *Loader) ProcessLine(line []byte, received time.Time) error {
 		return err
 	}
 
-	rec, err := ParseLine(line)
+	rec, err := ParseAnyLine(line)
 	if err != nil {
 		l.meta.InvalidLines++
 		if _, werr := l.invalid.Write(append(line, '\n')); werr != nil {
 			return werr
 		}
 		return nil
+	}
+	if err := l.writeDecoded(rec); err != nil {
+		return err
 	}
 
 	switch rec.Type {
@@ -253,6 +261,28 @@ func (l *Loader) ProcessLine(line []byte, received time.Time) error {
 	return nil
 }
 
+func (l *Loader) writeDecoded(rec Record) error {
+	var v any
+	switch rec.Type {
+	case "S":
+		v = rec.Start
+	case "P":
+		v = rec.Sample
+	case "E":
+		v = rec.Event
+	case "X":
+		v = rec.End
+	default:
+		return nil
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	_, err = l.decoded.Write(append(b, '\n'))
+	return err
+}
+
 func (l *Loader) writeLong(received time.Time, s Sample) error {
 	l.long.Write([]string{
 		received.Format(time.RFC3339Nano),
@@ -312,6 +342,9 @@ func (l *Loader) Close() error {
 	}
 	if l.raw != nil {
 		_ = l.raw.Close()
+	}
+	if l.decoded != nil {
+		_ = l.decoded.Close()
 	}
 	if l.events != nil {
 		_ = l.events.Close()

@@ -2,6 +2,7 @@ package obdlog
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/csv"
 	"encoding/json"
 	"os"
@@ -64,7 +65,7 @@ func TestLoaderReplaySample(t *testing.T) {
 		t.Fatalf("unexpected wide header: %v", wide[0])
 	}
 
-	raw, err := os.ReadFile(filepath.Join(l.Dir(), "raw.ndjson"))
+	raw, err := os.ReadFile(filepath.Join(l.Dir(), "raw.log"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,6 +86,53 @@ func TestLoaderReplaySample(t *testing.T) {
 	}
 	if meta.VIN != "9BGEA48A0LG185881" {
 		t.Fatalf("vin = %q", meta.VIN)
+	}
+}
+
+func TestLoaderReplayCompact(t *testing.T) {
+	src, err := os.Open("../../testdata/obd-logger-sample-compact.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer src.Close()
+
+	l, err := NewLoader(Options{OutDir: t.TempDir(), SessionID: "compact"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	scanner := bufio.NewScanner(src)
+	for scanner.Scan() {
+		if err := l.ProcessLine(scanner.Bytes(), time.Now()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := l.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	decoded, err := os.ReadFile(filepath.Join(l.Dir(), "decoded.ndjson"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := len(splitLines(decoded)); got != 17 {
+		t.Fatalf("decoded lines = %d, want 17", got)
+	}
+	raw, err := os.ReadFile(filepath.Join(l.Dir(), "raw.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := len(splitLines(raw)); got != 17 {
+		t.Fatalf("raw lines = %d, want 17", got)
+	}
+	long, err := os.ReadFile(filepath.Join(l.Dir(), "samples_long.csv"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := len(splitLines(long)); got != 15 {
+		t.Fatalf("long lines = %d, want 15", got)
+	}
+	if !bytes.Contains(decoded, []byte(`"v":1726`)) {
+		t.Fatalf("decoded sample missing decoded value: %s", decoded)
 	}
 }
 
