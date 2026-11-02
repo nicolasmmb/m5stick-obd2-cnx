@@ -242,6 +242,12 @@ func setLatest(pid string, v float64) {
 		latestRPM = int(v)
 	case "2F":
 		latestFuel = v
+	case "05":
+		latestCoolant = int(v)
+	case "0F":
+		latestIntake = int(v)
+	case "3C":
+		latestCat = int(v)
 	}
 }
 

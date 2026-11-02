@@ -74,6 +74,35 @@ Layout assimétrico para usar a tela inteira:
 - barra de combustível usa a largura disponível;
 - ícones de velocímetro e bomba.
 
+## Página 3 — TEMPERATURAS
+
+Layout assimétrico, igual ao da página 2:
+
+```text
+┌──────────────────┬──────────────────┐
+│      AGUA        │      AR ADM      │
+│      75 °C       │      43 °C       │
+│   ███████░░░░    │   █████░░░░░░    │
+├──────────────────┴──────────────────┤
+│           CATALISADOR               │
+│              506 °C                 │
+│   ████████████████░░░░░░░░░░░░░     │
+└──────────────────────────────────────┘
+```
+
+| Dado | PID | Faixas |
+|---|---|---|
+| Água | `0105` | verde <100 °C, amarelo 100–110 °C, vermelho >110 °C |
+| Ar admitido | `010F` | verde <50 °C, amarelo 50–70 °C, vermelho >70 °C |
+| Catalisador | `013C` | verde <700 °C, amarelo 700–900 °C, vermelho >900 °C |
+
+Cada tile tem:
+
+- ícone;
+- label;
+- valor em °C;
+- barra de faixa na base.
+
 ## Tipografia
 
 - valores grandes: `Bold18`;

@@ -66,6 +66,7 @@ X,<ms>,<motivo>
 - tela com framebuffer 4bpp e sem flicker;
 - página 1: SERIAL, BLE, ELM, PID/s, TX, ERR;
 - página 2: velocidade, RPM e combustível;
+- página 3: água, ar admitido e catalisador;
 - botões A/B (interrupt + polling fallback);
 - ACK serial do host para o estado `SERIAL`.
 
@@ -125,6 +126,7 @@ data/<sessão>/
 | Botões A/B | ⏳ pendente de confirmação |
 | SERIAL WAIT/OK/DISC | ⏳ pendente de confirmação |
 | Cores após `IsBGR(false)` | ⏳ pendente de confirmação |
+| Página 3 (temperaturas) | ⏳ pendente de confirmação visual |
 | Log real de 5–10 min | ⏳ pendente |
 
 ## 5. Decisões tomadas

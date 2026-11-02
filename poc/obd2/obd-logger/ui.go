@@ -15,12 +15,13 @@ import (
 )
 
 const (
-	screenW  = 240
-	screenH  = 135
-	bandRows = 24
-	inset    = 1
-	gap      = 2
-	contentH = screenH - inset*2 - 3
+	screenW   = 240
+	screenH   = 135
+	bandRows  = 24
+	inset     = 1
+	gap       = 2
+	contentH  = screenH - inset*2 - 3
+	pageCount = 3
 )
 
 var (
@@ -64,10 +65,13 @@ var (
 	samples       int
 	started       time.Time
 
-	latestSpeed int
-	latestRPM   int
-	latestFuel  float64
-	lastDraw    time.Time
+	latestSpeed   int
+	latestRPM     int
+	latestFuel    float64
+	latestCoolant int
+	latestIntake  int
+	latestCat     int
+	lastDraw      time.Time
 )
 
 const (
@@ -79,6 +83,9 @@ const (
 	iconClock
 	iconGauge
 	iconFuel
+	iconThermo
+	iconAir
+	iconCat
 )
 
 const (
@@ -250,12 +257,12 @@ func handleButtons() bool {
 
 	if aPressed && now.Sub(lastA) > 250*time.Millisecond {
 		lastA = now
-		page = (page + 1) % 2
+		page = (page + 1) % pageCount
 		changed = true
 	}
 	if bPressed && now.Sub(lastB) > 250*time.Millisecond {
 		lastB = now
-		page = (page + 1) % 2
+		page = (page + pageCount - 1) % pageCount
 		changed = true
 	}
 	return changed
@@ -274,10 +281,13 @@ func uiLoop() {
 
 func drawPage() {
 	fillRect(0, 0, screenW, screenH, black)
-	if page == 0 {
+	switch page {
+	case 0:
 		drawStatusPage()
-	} else {
+	case 1:
 		drawDataPage()
+	case 2:
+		drawTemperaturePage()
 	}
 	drawPageDots()
 	flushRows(0, screenH-1)
@@ -332,6 +342,74 @@ func drawStatusTile(r rect, icon int, label, value string, fill, accent color.RG
 	drawFitCentered(r, r.y+48, value, accent)
 }
 
+func drawTemperaturePage() {
+	in := innerRect()
+	topH := int16(65)
+	topW := (in.w - gap) / 2
+	bottomY := in.y + topH + gap
+	bottomH := in.h - topH - gap
+
+	drawTempTile(rect{in.x, in.y, topW, topH}, iconThermo, "AGUA", latestCoolant, 120, 100, 110)
+	drawTempTile(rect{in.x + topW + gap, in.y, topW, topH}, iconAir, "AR ADM", latestIntake, 80, 50, 70)
+	drawCatalystTile(rect{in.x, bottomY, in.w, bottomH})
+}
+
+func drawTempTile(r rect, icon int, label string, v, max, warn, hot int) {
+	c := tempColor(v, warn, hot)
+	fillRect(r.x, r.y, r.w, r.h, panel)
+	fillRect(r.x, r.y, r.w, 2, c)
+	drawIcon(icon, r.x+8, r.y+9, c)
+	text(&proggy.TinySZ8pt7b, r.x+24, r.y+16, label, gray)
+	val := "--"
+	if v >= 0 {
+		val = strconv.Itoa(v)
+	}
+	drawFitCentered(r, r.y+43, val, c)
+	textCentered(&proggy.TinySZ8pt7b, r, r.y+57, "C", gray)
+	fillRect(r.x+12, r.y+59, r.w-24, 4, gray)
+	if v > 0 {
+		n := int16(int(r.w-24) * v / max)
+		if n > r.w-24 {
+			n = r.w - 24
+		}
+		fillRect(r.x+12, r.y+59, n, 4, c)
+	}
+}
+
+func drawCatalystTile(r rect) {
+	c := tempColor(latestCat, 700, 900)
+	fillRect(r.x, r.y, r.w, r.h, panel)
+	fillRect(r.x, r.y, r.w, 2, c)
+	drawIcon(iconCat, r.x+8, r.y+9, c)
+	text(&proggy.TinySZ8pt7b, r.x+24, r.y+16, "CATALISADOR", gray)
+	val := "--"
+	if latestCat >= 0 {
+		val = strconv.Itoa(latestCat) + " C"
+	}
+	text(&freemono.Bold18pt7b, r.x+70, r.y+42, val, c)
+	fillRect(r.x+12, r.y+50, r.w-24, 6, gray)
+	if latestCat > 0 {
+		n := int16(int(r.w-24) * latestCat / 900)
+		if n > r.w-24 {
+			n = r.w - 24
+		}
+		fillRect(r.x+12, r.y+50, n, 6, c)
+	}
+}
+
+func tempColor(v, warn, hot int) color.RGBA {
+	if v < 0 {
+		return gray
+	}
+	if v >= hot {
+		return red
+	}
+	if v >= warn {
+		return amber
+	}
+	return green
+}
+
 func drawDataPage() {
 	in := innerRect()
 	topH := int16(65)
@@ -381,8 +459,8 @@ func drawFitCentered(r rect, baseline int16, s string, c color.RGBA) {
 }
 
 func drawPageDots() {
-	x := int16(screenW/2 - 8)
-	for i := 0; i < 2; i++ {
+	x := int16(screenW/2 - pageCount*5)
+	for i := 0; i < pageCount; i++ {
 		c := gray
 		if i == page {
 			c = white
@@ -424,6 +502,17 @@ func drawIcon(kind int, x, y int16, c color.RGBA) {
 		drawRectOutline(x+1, y+1, 6, 9, c)
 		fillRect(x+7, y+2, 2, 5, c)
 		fillRect(x+9, y+3, 1, 4, c)
+	case iconThermo:
+		drawRectOutline(x+3, y, 4, 8, c)
+		drawCircle(x+5, y+8, 2, c)
+	case iconAir:
+		fillRect(x, y+1, 9, 1, c)
+		fillRect(x+2, y+4, 8, 1, c)
+		fillRect(x, y+7, 9, 1, c)
+	case iconCat:
+		drawRectOutline(x, y+1, 10, 8, c)
+		fillRect(x+2, y+3, 6, 1, c)
+		fillRect(x+2, y+6, 6, 1, c)
 	}
 }
 
