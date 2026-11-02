@@ -616,7 +616,7 @@ O OBD2 **não entrega litros**: o PID `2F` entrega apenas a porcentagem
 litros = (raw_2F / 255) * capacidade_do_tanque
 ```
 
-No `poc/obd-display`:
+No `poc/obd2/obd-display`:
 
 ```go
 const tankCapacityDeciL = 440 // 44,0 L

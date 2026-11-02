@@ -7,21 +7,10 @@ require (
 	tinygo.org/x/espradio v0.5.0
 )
 
-require github.com/nicolasmmb/M5Unit-Encoder-Go v0.1.2
-
-require github.com/nicolasmmb/M5Unit-GPS-Go v0.3.1
-
-require (
-	github.com/nicolasmmb/M5Unit-Joystick2-Go v0.2.1 // indirect
-	github.com/nicolasmmb/M5Unit-NFC-Go v0.8.1 // indirect
-	github.com/nicolasmmb/M5Unit-ToF90-Go v0.3.0 // indirect
-)
-
 require (
 	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510 // indirect
-	github.com/nicolasmmb/M5Unit-Fingerprint2-Go v0.1.0
 	github.com/saltosystems/winrt-go v0.0.0-20261015065339-8ef619c103a3 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/soypat/cyw43439 v0.2.0 // indirect
@@ -31,6 +20,6 @@ require (
 	github.com/tinygo-org/pio v0.3.0 // indirect
 	golang.org/x/exp v0.0.0-20260727155853-b88d891fe743 // indirect
 	golang.org/x/sys v0.23.0 // indirect
-	tinygo.org/x/drivers v0.37.0 // indirect
-	tinygo.org/x/tinyfont v0.6.0 // indirect
+	tinygo.org/x/drivers v0.37.0
+	tinygo.org/x/tinyfont v0.6.0
 )

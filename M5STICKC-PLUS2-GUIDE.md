@@ -1,14 +1,14 @@
-# M5StickC Plus2 + TinyGo — guia do projeto
+# M5StickC Plus2 + TinyGo — guia OBD2 BLE
 
 > Complemento do [README](README.md) e do
-> [guia de criação de libs](LIB-CREATION-GUIDE.md).
+> [catálogo de dados OBD2](docs/OBD2-DATA-CATALOG.md).
 > Projeto: <https://github.com/nicolasmmb/m5stick-obd2-cnx>
 
 ## 1. Visão geral
 
-O projeto usa o **M5StickC Plus2** com **TinyGo** para validar tela, sensores,
-Grove, Wi-Fi e BLE antes de integrar com **OBD2**. Cada unit M5Stack tem uma
-lib Go própria, publicada em repositório separado.
+O projeto usa o **M5StickC Plus2** com **TinyGo** para conectar em um adaptador
+**ELM327 BLE**, ler PIDs OBD2 e exibir os dados no LCD. O foco do repositório é
+OBD2; exemplos de display, BLE e Wi-Fi ficam em `examples/`.
 
 ## 2. Conexão física e suportes
 
@@ -86,22 +86,14 @@ O Grove do StickC Plus2 é **I2C1/UART1 em G32/G33** e é **compartilhado**:
 | `tinygo.org/x/bluetooth` | **v0.17.0** |
 | `tinygo.org/x/espradio` | **v0.5.0** |
 
-Libs do projeto (tags usadas no `go.mod`):
+Libs usadas no `go.mod`:
 
-| Unit | Lib | Tag |
-|---|---|---|
-| Fingerprint2 | `M5Unit-Fingerprint2-Go` | v0.1.0 |
-| Encoder U135 | `M5Unit-Encoder-Go` | v0.1.2 |
-| GPS v1.1 | `M5Unit-GPS-Go` | v0.3.1 |
-| ToF-90 | `M5Unit-ToF90-Go` | v0.3.0 |
-| Joystick2 | `M5Unit-Joystick2-Go` | v0.2.1 |
-| NFC U216 | `M5Unit-NFC-Go` | v0.8.1 |
-
-Atualizar uma lib:
-
-```bash
-GOPROXY=direct go get github.com/nicolasmmb/M5Unit-NFC-Go@v0.8.1
-```
+| Lib | Uso |
+|---|---|
+| `tinygo.org/x/bluetooth` | BLE GATT do ELM327 |
+| `tinygo.org/x/espradio` | rádio Wi-Fi/BLE |
+| `tinygo.org/x/drivers` | LCD ST7789 |
+| `tinygo.org/x/tinyfont` | fontes do LCD |
 
 ## 5. Build, flash e monitor
 
@@ -118,25 +110,18 @@ make hello
 make wifi
 make ble
 make display
-make sensors
-make mic
-make env
-make finger
-make encoder
-make gps
-make tof
-make joystick2
-make nfc
 make obd
 make obd-client
+make obd-bench
+make obd-tune
 make obd-probe
 ```
 
 Direto com TinyGo:
 
 ```bash
-tinygo build -target=m5stick-c -size short -o /tmp/x.bin ./poc/hello
-tinygo flash -target=m5stick-c -port=/dev/cu.usbserial-XXXX -size short -monitor ./poc/hello
+tinygo build -target=m5stick-c -size short -o /tmp/x.bin ./examples/hello
+tinygo flash -target=m5stick-c -port=/dev/cu.usbserial-XXXX -size short -monitor ./examples/hello
 tinygo monitor -port=/dev/cu.usbserial-XXXX
 ```
 
@@ -147,7 +132,7 @@ tinygo monitor -port=/dev/cu.usbserial-XXXX
 
 ## 6. Wi-Fi (`espradio` v0.5.0)
 
-O POC `poc/wifi-scan` valida o rádio e lista APs.
+O POC `examples/wifi-scan` valida o rádio e lista APs.
 
 ```go
 import "tinygo.org/x/espradio"
@@ -164,13 +149,13 @@ Notas:
 - `Enable` inicializa o rádio; `Start` sobe a stack.
 - `Scan` retorna SSID/RSSI (2,4 GHz).
 - Medido no projeto: **25–36 APs**.
-- Wi-Fi + BLE juntos: validado no `poc/display-scan` (25–36 APs / 12–16 BLE).
+- Wi-Fi + BLE juntos: validado no `examples/display-scan` (25–36 APs / 12–16 BLE).
 - Para OBD2 via Wi-Fi será necessário abrir **TCP** para o adaptador; o POC
   atual só faz scan.
 
 ## 7. BLE (`tinygo.org/x/bluetooth` v0.17.0)
 
-O POC `poc/ble-scan` usa **BLE GATT**:
+O POC `examples/ble-scan` usa **BLE GATT**:
 
 ```go
 var adapter = bluetooth.DefaultAdapter
@@ -186,7 +171,7 @@ Notas:
 - **Somente BLE** (GATT). **Bluetooth Classic/SPP não é suportado.**
 - Active scan pede SCAN_RSP para obter nomes.
 - Medido: **10–14 dispositivos**, nomes recebidos.
-- O `poc/ble-scan` destaca nomes com `OBD`, `ELM`, `VLINK`, `ICAR` e imprime
+- O `examples/ble-scan` destaca nomes com `OBD`, `ELM`, `VLINK`, `ICAR` e imprime
   os service UUIDs anunciados (útil para achar adaptador sem nome).
 
 ## 8. Projeto OBD2
@@ -200,8 +185,8 @@ Notas:
 como `OBDII`, expõe o serviço `FFF0` e responde ao handshake e aos PIDs na
 tela do Stick:
 
-- `poc/obd-probe`: descobre o adaptador e enumera serviços/características.
-- `poc/obd-display`: conecta, faz o handshake ELM327 e mostra 3 páginas no
+- `poc/obd2/obd-probe`: descobre o adaptador e enumera serviços/características.
+- `poc/obd2/obd-display`: conecta, faz o handshake ELM327 e mostra 3 páginas no
   LCD: velocidade/RPM/litros, temperaturas e álcool/gasolina.
 
 O ELM327 **Bluetooth Classic** (SPP) continua sem suporte no TinyGo.
@@ -266,7 +251,7 @@ make obd-client  # handshake ELM327 + PIDs no serial
 make obd         # abre a UI de 3 páginas no LCD
 ```
 
-UI do `poc/obd-display`:
+UI do `poc/obd2/obd-display`:
 
 | Página | Dados | PIDs |
 |---|---|---|
@@ -331,47 +316,9 @@ make obd-bench   # lista PIDs suportados e mede ms/Hz
 make obd-tune    # compara ATAT/ATST
 ```
 
-## 9. Suportes (units) e configuração
+## 9. Testes e debug
 
-| Unit | Barramento | Endereço/baud | Lib | Status |
-|---|---|---|---|---|
-| Fingerprint2 A-K323CP | UART Grove | 115200, TX G32/RX G33 | Fingerprint2-Go | ✅ |
-| Encoder U135 | I2C Grove | 0x40, 100 kHz | Encoder-Go | ✅ |
-| GPS v1.1 AT6668 | UART Grove | 115200 (fallback 9600) | GPS-Go | ✅ |
-| Mini ToF-90 VL53L0C | I2C Grove | 0x29 | ToF90-Go | ✅ |
-| Joystick2 U024-V2 | I2C Grove | 0x63, 100 kHz | Joystick2-Go | ✅ |
-| NFC U216 ST25R3916 | I2C Grove | 0x50, 400 kHz | NFC-Go | ✅ |
-| ENV IV SHT40/BMP280 | I2C Grove | 0x44/0x76 | — | ✅ local |
-
-Regras:
-
-- Grove é **um por vez**; o POC precisa ser recompilado/flashado para o unit
-  em uso (ou usar um POC multi-unit, se existir).
-- Unidades I2C usam `machine.I2C1` com SDA=G32/SCL=G33.
-- Unidades UART usam `machine.UART1` com TX=G32/RX=G33.
-- Ao adicionar um unit, siga o
-  [guia de criação de libs](LIB-CREATION-GUIDE.md) e atualize:
-  - `go.mod` (tag da lib);
-  - `Makefile` (`build`, `check`, target de flash);
-  - `README.md` (seção e lista de POCs);
-  - `poc/<unit>` e, se houver escrita, o gate de confirmação.
-
-## 10. Testes e debug
-
-### 10.1 Testes de host (libs)
-
-```bash
-cd ../M5Unit-NFC-Go
-make test          # go test -race
-make alloc         # 0 allocs + footprint
-make bench         # tx/op, ns/op, B/op
-make bench-save NAME=before
-make bench-compare FROM=before TO=after
-make profile       # CPU/alloc profiles (pprof)
-make escape        # heap escapes
-```
-
-### 10.2 Testes de hardware
+### 9.1 Testes de hardware
 
 - Grave o POC com `make <poc>`.
 - Capture o serial:
@@ -389,17 +336,18 @@ make escape        # heap escapes
   for i in 1 2 3; do afplay /System/Library/Sounds/Glass.aiff; done
   ```
 
-- Valide a matriz de hardware (cartão/tag, UID/IDm, tipo, leitura/escrita).
-- Para escrita: confirmação explícita, whitelist de bloco/página e read-back.
+- Valide display, BLE scan, Wi-Fi scan e o fluxo OBD2 (scan → connect →
+  handshake → PIDs).
+- Para escrita em ECU/atuador: confirmação explícita e read-back.
 
-### 10.3 Debug TinyGo
+### 9.2 Debug TinyGo
 
 ```bash
-tinygo build -target=m5stick-c -size full ./poc/nfc     # mapa de tamanho
-tinygo build -target=m5stick-c -print-allocs=. ./poc/nfc
-tinygo build -target=m5stick-c -scheduler=async ./poc/nfc
-tinygo build -target=m5stick-c -gc=leaking ./poc/nfc
-tinygo gdb -target=m5stick-c ./poc/nfc                  # se disponível
+tinygo build -target=m5stick-c -size full ./poc/obd2/obd-display     # mapa de tamanho
+tinygo build -target=m5stick-c -print-allocs=. ./poc/obd2/obd-display
+tinygo build -target=m5stick-c -scheduler=async ./poc/obd2/obd-display
+tinygo build -target=m5stick-c -gc=leaking ./poc/obd2/obd-display
+tinygo gdb -target=m5stick-c ./poc/obd2/obd-display                  # se disponível
 ```
 
 - `-size full` lista pacotes que mais ocupam flash/RAM.
@@ -409,7 +357,7 @@ tinygo gdb -target=m5stick-c ./poc/nfc                  # se disponível
 - `make check` usa `scripts/gopls-tinygo.sh` para o `gopls` entender
   `machine`, build tags e GOROOT do TinyGo.
 
-### 10.4 Problemas comuns
+### 9.3 Problemas comuns
 
 | Sintoma | Causa/ação |
 |---|---|
@@ -417,22 +365,22 @@ tinygo gdb -target=m5stick-c ./poc/nfc                  # se disponível
 | flash falha | cabo de dados, porta correta, reset, modo bootloader |
 | tela com cores trocadas | `display.IsBGR(true)` |
 | tela deslocada | offsets 40/52 + rotação 90 |
-| I2C timeout em 400 kHz | testar 100 kHz (alguns units) |
-| unit não responde | Grove certo (G32/G33), um por vez, alimentação |
 | botão A/B não lê por `Get()` | usar interrupção; C lê |
 | C longo desliga o Stick | evitar; usar B 2× |
 | PSRAM ausente | TinyGo não usa os 2 MB |
 | Wi-Fi/BLE instável | antena interna, longe de metal, fonte estável |
+| OBD2 não acha adaptador | ignição ligada, adaptador BLE energizado |
+| OBD2 lento | normal: ~5–7 Hz por PID; consultar só o necessário |
 | RAM estourando | `-size full`, reduzir buffers/prints |
 
-## 11. Checklist rápido
+## 10. Checklist rápido
 
 - [ ] TinyGo 0.44.0 e Go 1.26.3.
 - [ ] HOLD G4 em HIGH.
 - [ ] Porta CH9102 correta.
-- [ ] Grove G32/G33, um unit por vez.
+- [ ] Adaptador OBD2 BLE energizado e ignição ligada.
 - [ ] `make check` e `make build` verdes.
 - [ ] Log serial limpo (sem timeouts).
-- [ ] 3 beeps antes de ação do usuário.
-- [ ] Escrita só com confirmação e read-back.
-- [ ] Atualizar README/PLAN após validar.
+- [ ] Handshake `ELM327 v2.1` e `0100` respondendo.
+- [ ] Tela OBD2 sem flicker/ghosting.
+- [ ] Atualizar README/docs após validar.
