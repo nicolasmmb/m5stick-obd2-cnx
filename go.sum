@@ -57,6 +57,10 @@ github.com/nicolasmmb/M5Unit-NFC-Go v0.6.4 h1:2Oq+2YK9c5mp/TfvU1QnevsH815u5/9C4Y
 github.com/nicolasmmb/M5Unit-NFC-Go v0.6.4/go.mod h1:Ybo6TOtphNj0/eIFzO7tciOvItVzVynz85a1SHrsMjQ=
 github.com/nicolasmmb/M5Unit-NFC-Go v0.7.0 h1:+NeNu6n6KPNRBCyIn4/lUFDQAyL/XCH2uTanOWvYloo=
 github.com/nicolasmmb/M5Unit-NFC-Go v0.7.0/go.mod h1:Ybo6TOtphNj0/eIFzO7tciOvItVzVynz85a1SHrsMjQ=
+github.com/nicolasmmb/M5Unit-NFC-Go v0.8.0 h1:ctL8lP/iu1X4l0rGCd8TNo2OGIqY49XzfQcA1hX6zd8=
+github.com/nicolasmmb/M5Unit-NFC-Go v0.8.0/go.mod h1:Ybo6TOtphNj0/eIFzO7tciOvItVzVynz85a1SHrsMjQ=
+github.com/nicolasmmb/M5Unit-NFC-Go v0.8.1 h1:XjYo31PWAXXkAxQjJr/R3nKpKPm+PkCT24Pv5VX4D0I=
+github.com/nicolasmmb/M5Unit-NFC-Go v0.8.1/go.mod h1:Ybo6TOtphNj0/eIFzO7tciOvItVzVynz85a1SHrsMjQ=
 github.com/nicolasmmb/M5Unit-ToF90-Go v0.1.0 h1:bWmKNp4QoPIaewykufu+Cj82G3zzwS6cwLNtvbWFyEA=
 github.com/nicolasmmb/M5Unit-ToF90-Go v0.1.0/go.mod h1:KC+HK4fAEqvf0qkSEALejVwvpJqvfBrPPvUHj4jmQIk=
 github.com/nicolasmmb/M5Unit-ToF90-Go v0.1.1 h1:x9QdM0QtTZeAxEzSWWDmPGbAxM6TjFl1S/T9Jx30mwo=

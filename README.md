@@ -596,7 +596,7 @@ Probe NFC-A do **Unit NFC** (SKU U216, ST25R3916):
 - Grove **I2C1: SDA=G32, SCL=G33**, endereço **0x50**, 400 kHz. Um unit por
   vez no Grove.
 - Driver puro Go separado:
-  [M5Unit-NFC-Go](https://github.com/nicolasmmb/M5Unit-NFC-Go) v0.7.0 —
+  [M5Unit-NFC-Go](https://github.com/nicolasmmb/M5Unit-NFC-Go) v0.8.1 —
   init completo do ST25R3916, ativação NFC-A (REQA/WUPA, anticolisão, SELECT),
   **0 alocações** por detecção.
 - **Uma tela por protocolo** (**C** cicla): **NFC-A**, **NFC-F**, **NFC-B**,
@@ -623,7 +623,10 @@ Probe NFC-A do **Unit NFC** (SKU U216, ST25R3916):
 - **FeliCa avançado validado**: tipo FeliCa Standard, 2 system codes (tela
   `SYS`), ~19 ms. API `FeliCaReadBlock` (Read Without Encryption) pronta para
   uma leitura por serviço/bloco.
-- NDEF, ISO-DEP/DESFire e emulação entram nas próximas fases.
+- **Emulação NFC-F (básica) validada**: target FeliCa com PT memory + TSN;
+  um Flipper Zero identifica o cartão emulado com o IDm configurado.
+- NDEF, ISO-DEP/DESFire e emulação completa (respostas de serviço/leitura)
+  entram nas próximas fases.
 
 ## Zed (autocomplete e diagnósticos)
 

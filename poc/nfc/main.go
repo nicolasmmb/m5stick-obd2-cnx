@@ -32,6 +32,7 @@ const (
 	pageV
 	pageT2
 	pageCL
+	pageEmuF
 	pageInfo
 	pageCount
 )
@@ -67,6 +68,7 @@ var (
 	chipRev       uint8
 	scans         uint32
 	errors        uint32
+	emuEvt        uint32
 )
 
 type uiState struct {
@@ -99,6 +101,8 @@ type uiState struct {
 	detectUS int64
 	scans    uint32
 	errors   uint32
+	emu      bool
+	emuEvt   uint32
 }
 
 type canvas struct {
@@ -185,7 +189,13 @@ func main() {
 			scans:   atomic.LoadUint32(&scans),
 			errors:  atomic.LoadUint32(&errors),
 		}
-		if rfOn {
+		if page == pageEmuF {
+			if act, err := dev.EmulationActivity(); err == nil && act {
+				atomic.AddUint32(&emuEvt, 1)
+			}
+			st.emu = dev.Emulating()
+			st.emuEvt = atomic.LoadUint32(&emuEvt)
+		} else if rfOn {
 			ctx, cancel := context.WithTimeout(context.Background(), 120*time.Millisecond)
 			start := time.Now()
 			ok := false
@@ -299,6 +309,8 @@ func main() {
 				println("nfc CL", "uid", fmt.Sprintf("% X", st.uid[:st.uidLen]),
 					"block1", fmt.Sprintf("% X", st.clData[:]), "auth_ok", st.clOK,
 					"detect_us", st.detectUS, "err", st.errors)
+			case st.page == pageEmuF:
+				println("nfc EMU", "emulating", st.emu, "events", st.emuEvt, "err", st.errors)
 			default:
 				println("nfc", pageName(st.page), "no card; scans", st.scans,
 					"err", st.errors, "detect_us", st.detectUS, "rf", rfOn)
@@ -341,12 +353,13 @@ func reinitChip() {
 
 func nextPage() {
 	page = (page + 1) % pageCount
-	if page <= pageB || page == pageT2 || page == pageCL {
-		if err := configurePage(page); err != nil {
-			println("nfc: configure", err.Error())
-		} else {
-			rfOn = true
-		}
+	if dev.Emulating() && page != pageEmuF {
+		_ = dev.StopEmulation(context.Background())
+	}
+	if err := configurePage(page); err != nil {
+		println("nfc: configure", err.Error())
+	} else {
+		rfOn = true
 	}
 	last = uiState{}
 	println("nfc: tela", pageName(page))
@@ -470,6 +483,8 @@ func render(st uiState) {
 		drawT2(st)
 	case pageCL:
 		drawCL(st)
+	case pageEmuF:
+		drawEmuF(st)
 	case pageInfo:
 		drawInfo(st)
 	}
@@ -587,6 +602,21 @@ func drawCL(st uiState) {
 	}
 }
 
+func drawEmuF(st uiState) {
+	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 34, "EMULACAO NFC-F", gray)
+	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 50, "FeliCa Lite (PT memory)", green)
+	idm := [8]byte{0x01, 0x2E, 0x50, 0xE5, 0x3C, 0x4B, 0x4F, 0x29}
+	pmm := [8]byte{0x00, 0xF1, 0x00, 0x00, 0x00, 0x01, 0x43, 0x00}
+	tinyfont.WriteLine(&fb, &freemono.Bold9pt7b, 4, 66, fmt.Sprintf("% X", idm[:]), white)
+	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 82, fmt.Sprintf("PMm % X", pmm[:]), white)
+	if st.emu {
+		tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 100, "aproxime um leitor/telefone", gray)
+		tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 112, fmt.Sprintf("eventos RF %d", st.emuEvt), white)
+	} else {
+		tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 100, "EMULACAO INATIVA", red)
+	}
+}
+
 func drawV(st uiState) {
 	if !st.card {
 		drawSearch("NFC-V / ISO15693")
@@ -630,6 +660,8 @@ func pageName(p int) string {
 		return "T2"
 	case pageCL:
 		return "CL"
+	case pageEmuF:
+		return "EMU"
 	}
 	return "INFO"
 }
@@ -648,6 +680,12 @@ func configurePage(p int) error {
 		return dev.ConfigureV(ctx)
 	case pageT2, pageCL:
 		return dev.ConfigureA(ctx)
+	case pageEmuF:
+		return dev.StartEmulationF(ctx, nfc.EmulateFConfig{
+			IDm:        [8]byte{0x01, 0x2E, 0x50, 0xE5, 0x3C, 0x4B, 0x4F, 0x29},
+			PMm:        [8]byte{0x00, 0xF1, 0x00, 0x00, 0x00, 0x01, 0x43, 0x00},
+			SystemCode: 0xFFFF,
+		})
 	}
 	return nil
 }
