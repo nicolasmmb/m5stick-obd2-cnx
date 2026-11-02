@@ -20,6 +20,7 @@ dados do carro no LCD.
 | Data loader | ✅ serial compacta → CSV long/wide; replay testado |
 | Reconexão BLE | ✅ backoff 1/2/5/10 s + beeps (validar no hardware) |
 | DTCs/readiness | ✅ eventos `E` + resumo em `metadata.json` |
+| Simulação serial | ✅ loop live sem BLE (`--sim`) |
 | taxa | ~5–7 Hz por PID; varredura completa ~7,2 s |
 
 ## Hardware
@@ -89,7 +90,8 @@ make hello       # smoke test
 make logger      # compila o loader Go em /tmp/obd-logger
 make log         # lê a serial e grava em data/
 make replay      # testa o loader com testdata/obd-logger-sample-compact.txt
-make test        # testes do loader/parser
+make sim         # loop live via serial, sem BLE/carro
+make test        # testes do loader/parser/sessão
 
 make monitor     # monitor serial apenas
 ```
@@ -133,7 +135,13 @@ Teste sem carro:
 ```bash
 make replay       # usa testdata/obd-logger-sample-compact.txt
 make replay-device FILE=data/<sessão>/raw.log  # envia replay ao Stick
+make sim FILE=data/<sessão>/raw.log            # loop live sem BLE
+make sim FILE=data/<sessão>/raw.log DROP_AFTER=40  # testa reconexão
 ```
+
+O `--sim` roda o **mesmo loop live** do firmware (handshake, polling, DTCs,
+reconexão) usando respostas sintéticas pela serial. Detalhes em
+**[docs/SERIAL-SIM.md](docs/SERIAL-SIM.md)**.
 
 Ou direto:
 
@@ -221,7 +229,7 @@ Detalhes em **[docs/P1-ROBUSTNESS.md](docs/P1-ROBUSTNESS.md)**.
 | obd-bench | 300 KB | 19,3 KB |
 | obd-tune | 295 KB | 19,3 KB |
 | obd-display | 292 KB | 72,8 KB (16,2 KB de framebuffer) |
-| obd-logger | 301 KB | 57,7 KB (16,2 KB de framebuffer) |
+| obd-logger | 311 KB | 58,4 KB (16,2 KB de framebuffer) |
 
 ## Ambiente
 

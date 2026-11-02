@@ -74,7 +74,8 @@ X,<ms>,<motivo>
 - ACK serial do host para o estado `SERIAL`;
 - reconexão automática do BLE com backoff (1/2/5/10 s) e beeps no buzzer;
 - `X` em perda de link, replay e shutdown do host (`C,STOP`);
-- leitura de DTCs armazenados/pendentes/permanentes e readiness.
+- leitura de DTCs armazenados/pendentes/permanentes e readiness;
+- modo `C,SIM` para rodar o loop live pela serial, sem BLE/carro.
 
 ### Host `cmd/obd-logger`
 
@@ -135,8 +136,9 @@ data/<sessão>/
 | Páginas 1–6 | ✅ confirmadas visualmente |
 | Replay 5–10 min sem OOM | ✅ |
 | Reconexão BLE + beeps | ⏳ pendente de hardware |
-| `X` em `ble_lost`/`host` | ⏳ pendente de hardware |
-| DTC/readiness no carro | ⏳ pendente de hardware |
+| `X` em `ble_lost`/`host` | ✅ testes de host; ⏳ hardware |
+| DTC/readiness | ✅ testes de host; ⏳ carro |
+| Simulação serial (`C,SIM`) | ✅ host + firmware compilando; ⏳ hardware |
 | Log real de 5–10 min no carro | ⏳ pendente |
 
 ## 5. Decisões tomadas
@@ -210,6 +212,7 @@ make obd-logger         # grava o firmware live (BLE + tela + replay)
 make log                # lê a serial e grava em data/; Ctrl-C envia C,STOP
 make replay             # testa o loader com sample compacto
 make replay-device      # envia um raw.log ao Stick
+make sim                # loop live via serial (sem BLE)
 make test
 make build
 make check
@@ -230,7 +233,8 @@ Firmware: um único binário (live + replay).
 - `Reading` não retém mais `Raw []byte`;
 - texto desenhado direto pelo glifo, sem a slice de cores do `tinyfont`;
 - replay validado por 90 s / 2.436 registros sem OOM, a ~70 ticks/s;
-- binário P1: flash 307.844 / RAM 59.084 (antes 302.356 / 59.028).
+- binário P1: flash 307.844 / RAM 59.084 (antes 302.356 / 59.028);
+- com simulador serial: flash 318.020 / RAM 59.796.
 
 ### BLE no modo replay
 
@@ -254,6 +258,7 @@ firmware para o scan, encerra a conexão e não usa mais o adaptador até um nov
 
 - [README](../README.md)
 - [P1 — robustez](P1-ROBUSTNESS.md)
+- [Simulador serial](SERIAL-SIM.md)
 - [Plano de otimização](OPTIMIZATION-PLAN.md)
 - [Formato do logger](OBD2-LOGGER-FORMAT.md)
 - [Formato do replay](OBD2-REPLAY-FORMAT.md)
@@ -267,5 +272,6 @@ firmware para o scan, encerra a conexão e não usa mais o adaptador até um nov
 ## 10. Estado do git
 
 A otimização e o replay estão mergeados na `main` (`d0da8ad`). O P1
-(reconexão, `X`/`C,STOP`, DTCs/readiness) está commitado na `main`. O P0-5
-(sessão real de 5–10 min no carro) segue pendente.
+(reconexão, `X`/`C,STOP`, DTCs/readiness) está commitado na `main`. O
+simulador serial (`C,SIM`) está na branch `feat/serial-sim`. O P0-5 (sessão
+real de 5–10 min no carro) segue pendente.
