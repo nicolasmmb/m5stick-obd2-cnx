@@ -75,6 +75,8 @@ var slowPIDs = []pidSpec{
 	{"0133", "33", "kPa", kBaro},
 }
 
+var errReplay = &simpleError{"replay mode"}
+
 func main() {
 	hold := machine.GPIO4
 	hold.Configure(machine.PinConfig{Mode: machine.PinOutput})
@@ -108,10 +110,18 @@ func main() {
 	adapter.SetScanType(bluetooth.ScanTypeActive)
 
 	for {
+		if appMode == ModeReplay {
+			uiPaused = false
+			time.Sleep(200 * time.Millisecond)
+			continue
+		}
 		err := runSession()
 		uiPaused = false
-		if err != nil {
+		if err != nil && err != errReplay {
 			println("obd-logger:", err.Error())
+		}
+		if appMode == ModeReplay {
+			continue
 		}
 		if bleState == bleConnected {
 			elmState = elmErr
@@ -132,6 +142,9 @@ func debugStep(s string) {
 }
 
 func runSession() error {
+	if appMode == ModeReplay {
+		return errReplay
+	}
 	bleState = bleScan
 	elmState = elmWait
 	var addr bluetooth.Address
@@ -143,6 +156,10 @@ func runSession() error {
 		close(done)
 	}()
 	err := adapter.Scan(func(_ *bluetooth.Adapter, r bluetooth.ScanResult) {
+		if appMode == ModeReplay {
+			adapter.StopScan()
+			return
+		}
 		if found {
 			return
 		}
@@ -159,6 +176,9 @@ func runSession() error {
 		return err
 	}
 	<-done
+	if appMode == ModeReplay {
+		return errReplay
+	}
 	if !found {
 		debugStep("no_device")
 		return &simpleError{"no OBDII BLE device found"}
@@ -227,7 +247,13 @@ func runSession() error {
 	emitStart(vin)
 
 	for {
+		if appMode == ModeReplay {
+			return errReplay
+		}
 		for _, p := range fastPIDs {
+			if appMode == ModeReplay {
+				return errReplay
+			}
 			if !emitPID(e, p, start) {
 				time.Sleep(200 * time.Millisecond)
 			}
@@ -235,6 +261,9 @@ func runSession() error {
 		cycle++
 		if cycle%4 == 0 {
 			for _, p := range slowPIDs {
+				if appMode == ModeReplay {
+					return errReplay
+				}
 				emitPID(e, p, start)
 				time.Sleep(20 * time.Millisecond)
 			}

@@ -226,23 +226,6 @@ func serialStatus() (string, color.RGBA, color.RGBA) {
 	return "DISC", darkRed, red
 }
 
-func pollSerialAck() {
-	n := machine.Serial.Buffered()
-	if n <= 0 {
-		return
-	}
-	if n > 32 {
-		n = 32
-	}
-	var buf [32]byte
-	m, _ := machine.Serial.Read(buf[:n])
-	for _, b := range buf[:m] {
-		if b == 'A' {
-			atomic.StoreInt64(&serialAckNano, time.Now().UnixNano())
-		}
-	}
-}
-
 func handleButtons() bool {
 	now := time.Now()
 	changed := false
@@ -278,7 +261,7 @@ func handleButtons() bool {
 
 func uiLoop() {
 	for {
-		pollSerialAck()
+		serialLink.Poll()
 		if uiPaused {
 			time.Sleep(100 * time.Millisecond)
 			continue
