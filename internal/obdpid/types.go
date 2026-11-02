@@ -29,9 +29,9 @@ const (
 )
 
 // Reading is the canonical value of one PID, independent of transport.
+// The raw payload is not retained: only the decoded value is kept.
 type Reading struct {
 	PID     string
-	Raw     []byte
 	Value   float64
 	Unit    string
 	Quality Quality
