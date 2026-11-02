@@ -82,6 +82,9 @@ type uiState struct {
 	mem      uint16
 	idm      [8]byte
 	pmm      [8]byte
+	fType    uint8
+	sysCodes [16]uint16
+	sysCount uint8
 	bPupi    [4]byte
 	bApp     [4]byte
 	bProto   [3]byte
@@ -200,11 +203,14 @@ func main() {
 					st.mem = c.UserMemory
 				}
 			case pageF:
-				var c nfc.FeliCaCard
-				c, ok, err = dev.DetectF(ctx)
+				var c nfc.FeliCaInfo
+				c, ok, err = dev.DetectFInfo(ctx)
 				if ok {
 					st.idm = c.IDm
 					st.pmm = c.PMm
+					st.fType = c.Type
+					st.sysCodes = c.SystemCodes
+					st.sysCount = c.SystemCount
 				}
 			case pageB:
 				var c nfc.NFCBCard
@@ -268,9 +274,15 @@ func main() {
 					"sak", st.sak, "mem", st.mem, "detect_us", st.detectUS,
 					"scans", st.scans, "err", st.errors)
 			case st.card && st.page == pageF:
+				sys := ""
+				for i := 0; i < int(st.sysCount) && i < 4; i++ {
+					sys += fmt.Sprintf(" %04X", st.sysCodes[i])
+				}
 				println("nfc F", "idm", fmt.Sprintf("% X", st.idm[:]),
-					"pmm", fmt.Sprintf("% X", st.pmm[:]), "detect_us", st.detectUS,
-					"scans", st.scans, "err", st.errors)
+					"pmm", fmt.Sprintf("% X", st.pmm[:]),
+					"type", nfc.FeliCaInfo{Type: st.fType}.TypeName(),
+					"sys", sys,
+					"detect_us", st.detectUS, "scans", st.scans, "err", st.errors)
 			case st.card && st.page == pageB:
 				println("nfc B", "pupi", fmt.Sprintf("% X", st.bPupi[:]),
 					"app", fmt.Sprintf("% X", st.bApp[:]), "proto", fmt.Sprintf("% X", st.bProto[:]),
@@ -491,13 +503,28 @@ func drawF(st uiState) {
 		drawSearch("NFC-F / FeliCa")
 		return
 	}
-	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 36, "NFC-F / FeliCa", gray)
-	tinyfont.WriteLine(&fb, &freemono.Bold9pt7b, 4, 52,
+	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 34, "NFC-F", gray)
+	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 42, 34,
+		nfc.FeliCaInfo{Type: st.fType}.TypeName(), green)
+	tinyfont.WriteLine(&fb, &freemono.Bold9pt7b, 4, 50,
 		fmt.Sprintf("% X", st.idm[:]), green)
-	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 72,
+	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 70,
 		fmt.Sprintf("PMm % X", st.pmm[:]), white)
-	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 92,
-		fmt.Sprintf("FeliCa  %d us", st.detectUS), white)
+	if st.sysCount > 0 {
+		n := int(st.sysCount)
+		if n > 4 {
+			n = 4
+		}
+		line := "SYS "
+		for i := 0; i < n; i++ {
+			line += fmt.Sprintf(" %04X", st.sysCodes[i])
+		}
+		tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 88, line, white)
+	} else {
+		tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 88, "SYS --", gray)
+	}
+	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 106,
+		fmt.Sprintf("%d us", st.detectUS), gray)
 }
 
 func drawB(st uiState) {

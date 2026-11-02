@@ -596,7 +596,7 @@ Probe NFC-A do **Unit NFC** (SKU U216, ST25R3916):
 - Grove **I2C1: SDA=G32, SCL=G33**, endereço **0x50**, 400 kHz. Um unit por
   vez no Grove.
 - Driver puro Go separado:
-  [M5Unit-NFC-Go](https://github.com/nicolasmmb/M5Unit-NFC-Go) v0.6.4 —
+  [M5Unit-NFC-Go](https://github.com/nicolasmmb/M5Unit-NFC-Go) v0.7.0 —
   init completo do ST25R3916, ativação NFC-A (REQA/WUPA, anticolisão, SELECT),
   **0 alocações** por detecção.
 - **Uma tela por protocolo** (**C** cicla): **NFC-A**, **NFC-F**, **NFC-B**,
@@ -604,7 +604,8 @@ Probe NFC-A do **Unit NFC** (SKU U216, ST25R3916):
   então não é preciso testar vários cartões na mesma tela.
 - **A** liga/desliga o campo RF; **B** reinicializa o chip no protocolo da tela;
   **C** troca de tela (reconfigura o chip automaticamente).
-- NFC-A mostra UID/tipo/ATQA/SAK/memória; NFC-F mostra IDm/PMm; NFC-B mostra
+- NFC-A mostra UID/tipo/ATQA/SAK/memória; NFC-F mostra IDm/PMm, subtipo
+  (Standard/Lite/Plug) e os **system codes**; NFC-B mostra
   PUPI/APPL/PROTO; NFC-V mostra UID/DSFID; **T2** lê a página 4; **CL** autentica
   com chave A de fábrica e lê o bloco 1 (MIFARE Classic).
 - **Escrita** nas telas T2/CL: **B duas vezes** (a primeira arma, a segunda
@@ -619,7 +620,10 @@ Probe NFC-A do **Unit NFC** (SKU U216, ST25R3916):
   verificação e erros por fase), mas a confirmação no hardware ainda está
   pendente; o disparo por B 2× precisa de mais um teste.
 - Type 2 (T2) pendente de cartão NTAG/Ultralight.
-- NDEF e emulação entram nas próximas fases.
+- **FeliCa avançado validado**: tipo FeliCa Standard, 2 system codes (tela
+  `SYS`), ~19 ms. API `FeliCaReadBlock` (Read Without Encryption) pronta para
+  uma leitura por serviço/bloco.
+- NDEF, ISO-DEP/DESFire e emulação entram nas próximas fases.
 
 ## Zed (autocomplete e diagnósticos)
 
