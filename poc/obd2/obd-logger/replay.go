@@ -19,12 +19,7 @@ func applyReplayRecord(rec obdwire.Record) {
 	if !ok {
 		return
 	}
-	reading, err := pidRegistry.Decode(rec.PID, raw)
-	if err != nil || reading.Quality != obdpid.QualityOK {
-		return
-	}
-	setLatest(rec.PID, reading.Value)
-	samples++
+	ingest(rec.PID, raw, obdpid.SourceReplay)
 }
 
 func decodeHex(s string) ([]byte, bool) {
@@ -45,15 +40,9 @@ func decodeHex(s string) ([]byte, bool) {
 }
 
 func resetReplayValues() {
-	latestFuel = -1
-	latestCoolant = -1
-	latestIntake = -1
-	latestCat = -1
-	latestLoad = -1
-	latestThrottle = -1
-	latestLambda = -1
-	latestVoltage = -1
+	readingStore.Clear()
 	dtcCount = -1
+	milOn = false
 	tripKm = 0
 	tripFuelStart = -1
 	tripLast = time.Now()

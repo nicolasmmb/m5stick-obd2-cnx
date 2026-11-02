@@ -12,16 +12,18 @@ import (
 	"tinygo.org/x/tinyfont"
 	"tinygo.org/x/tinyfont/freemono"
 	"tinygo.org/x/tinyfont/proggy"
+
+	"m5stick-obd2-cnx/internal/obdpid"
+	"m5stick-obd2-cnx/internal/obdstore"
 )
 
 const (
-	screenW   = 240
-	screenH   = 135
-	bandRows  = 4
-	inset     = 1
-	gap       = 2
-	contentH  = screenH - inset*2 - 3
-	pageCount = 6
+	screenW  = 240
+	screenH  = 135
+	bandRows = 4
+	inset    = 1
+	gap      = 2
+	contentH = screenH - inset*2 - 3
 )
 
 var (
@@ -65,23 +67,14 @@ var (
 	samples       int
 	started       time.Time
 
-	latestSpeed    int
-	latestRPM      int
-	latestFuel     float64
-	latestCoolant  int
-	latestIntake   int
-	latestCat      int
-	latestLoad     float64
-	latestThrottle float64
-	latestLambda   float64
-	latestVoltage  float64
-	dtcCount       int
-	milOn          bool
-	tripKm         float64
-	tripFuelStart  float64
-	tripLast       time.Time
-	lastDraw       time.Time
-	uiPaused       bool
+	dtcCount      int
+	milOn         bool
+	tripKm        float64
+	tripFuelStart float64
+	tripLast      time.Time
+	lastDraw      time.Time
+	uiPaused      bool
+	view          obdstore.Snapshot
 )
 
 const (
@@ -185,6 +178,26 @@ func initButtons() {
 	lastBState = machine.GPIO39.Get()
 }
 
+func reading(pid string) (obdpid.Reading, bool) {
+	return view.Get(pid)
+}
+
+func readingNumber(pid string) (float64, bool) {
+	r, ok := reading(pid)
+	if !ok {
+		return 0, false
+	}
+	if r.Quality != obdpid.QualityOK && r.Quality != obdpid.QualityStale {
+		return 0, false
+	}
+	return r.Value, true
+}
+
+func readingStale(pid string) bool {
+	r, ok := reading(pid)
+	return ok && r.Quality == obdpid.QualityStale
+}
+
 func bleStatus() (string, color.RGBA, color.RGBA) {
 	switch bleState {
 	case bleScan:
@@ -276,6 +289,7 @@ func uiLoop() {
 }
 
 func drawPage() {
+	view = viewSnapshot()
 	fillRect(0, 0, screenW, screenH, black)
 	switch page {
 	case 0:
@@ -351,13 +365,30 @@ func drawTemperaturePage() {
 	bottomY := in.y + topH + gap
 	bottomH := in.h - topH - gap
 
-	drawTempTile(rect{in.x, in.y, topW, topH}, iconThermo, "AGUA", latestCoolant, 120, 100, 110)
-	drawTempTile(rect{in.x + topW + gap, in.y, topW, topH}, iconAir, "AR ADM", latestIntake, 80, 50, 70)
-	drawCatalystTile(rect{in.x, bottomY, in.w, bottomH})
+	t := pages[2].Tiles
+	cool, coolOK := readingNumber(t[0].PID)
+	intake, intakeOK := readingNumber(t[1].PID)
+	cat, catOK := readingNumber(t[2].PID)
+	coolV, intakeV, catV := -1, -1, -1
+	if coolOK {
+		coolV = int(cool)
+	}
+	if intakeOK {
+		intakeV = int(intake)
+	}
+	if catOK {
+		catV = int(cat)
+	}
+	drawTempTile(rect{in.x, in.y, topW, topH}, t[0].Icon, t[0].Label, coolV, readingStale(t[0].PID), 120, 100, 110)
+	drawTempTile(rect{in.x + topW + gap, in.y, topW, topH}, t[1].Icon, t[1].Label, intakeV, readingStale(t[1].PID), 80, 50, 70)
+	drawCatalystTile(rect{in.x, bottomY, in.w, bottomH}, t[2].Label, catV, readingStale(t[2].PID))
 }
 
-func drawTempTile(r rect, icon int, label string, v, max, warn, hot int) {
+func drawTempTile(r rect, icon int, label string, v int, stale bool, max, warn, hot int) {
 	c := tempColor(v, warn, hot)
+	if stale {
+		c = amber
+	}
 	fillRect(r.x, r.y, r.w, r.h, panel)
 	fillRect(r.x, r.y, r.w, 2, c)
 	drawIcon(icon, r.x+8, r.y+9, c)
@@ -378,20 +409,23 @@ func drawTempTile(r rect, icon int, label string, v, max, warn, hot int) {
 	}
 }
 
-func drawCatalystTile(r rect) {
-	c := tempColor(latestCat, 700, 900)
+func drawCatalystTile(r rect, label string, cat int, stale bool) {
+	c := tempColor(cat, 700, 900)
+	if stale {
+		c = amber
+	}
 	fillRect(r.x, r.y, r.w, r.h, panel)
 	fillRect(r.x, r.y, r.w, 2, c)
 	drawIcon(iconCat, r.x+8, r.y+9, c)
-	text(&proggy.TinySZ8pt7b, r.x+24, r.y+16, "CATALISADOR", gray)
+	text(&proggy.TinySZ8pt7b, r.x+24, r.y+16, label, gray)
 	val := "--"
-	if latestCat >= 0 {
-		val = strconv.Itoa(latestCat) + " C"
+	if cat >= 0 {
+		val = strconv.Itoa(cat) + " C"
 	}
 	text(&freemono.Bold18pt7b, r.x+70, r.y+42, val, c)
 	fillRect(r.x+12, r.y+50, r.w-24, 6, gray)
-	if latestCat > 0 {
-		n := int16(int(r.w-24) * latestCat / 900)
+	if cat > 0 {
+		n := int16(int(r.w-24) * cat / 900)
 		if n > r.w-24 {
 			n = r.w - 24
 		}
@@ -419,11 +453,30 @@ func drawEnginePage() {
 	bottomY := in.y + topH + gap
 	bottomH := in.h - topH - gap
 
-	loadC := loadColor(latestLoad)
-	thrC := throttleColor(latestThrottle)
-	drawPercentTile(rect{in.x, in.y, topW, topH}, iconGauge, "CARGA", latestLoad, loadC)
-	drawPercentTile(rect{in.x + topW + gap, in.y, topW, topH}, iconRate, "BORBOLETA", latestThrottle, thrC)
-	drawLambdaTile(rect{in.x, bottomY, in.w, bottomH})
+	t := pages[3].Tiles
+	load, loadOK := readingNumber(t[0].PID)
+	thr, thrOK := readingNumber(t[1].PID)
+	lambda, lambdaOK := readingNumber(t[2].PID)
+	if !loadOK {
+		load = -1
+	}
+	if !thrOK {
+		thr = -1
+	}
+	if !lambdaOK {
+		lambda = -1
+	}
+	loadC := loadColor(load)
+	thrC := throttleColor(thr)
+	if readingStale(t[0].PID) {
+		loadC = amber
+	}
+	if readingStale(t[1].PID) {
+		thrC = amber
+	}
+	drawPercentTile(rect{in.x, in.y, topW, topH}, t[0].Icon, t[0].Label, load, loadC)
+	drawPercentTile(rect{in.x + topW + gap, in.y, topW, topH}, t[1].Icon, t[1].Label, thr, thrC)
+	drawLambdaTile(rect{in.x, bottomY, in.w, bottomH}, lambda, readingStale(t[2].PID))
 }
 
 func drawPercentTile(r rect, icon int, label string, v float64, c color.RGBA) {
@@ -445,21 +498,24 @@ func drawPercentTile(r rect, icon int, label string, v float64, c color.RGBA) {
 	}
 }
 
-func drawLambdaTile(r rect) {
-	c := lambdaColor(latestLambda)
+func drawLambdaTile(r rect, lambda float64, stale bool) {
+	c := lambdaColor(lambda)
+	if stale {
+		c = amber
+	}
 	fillRect(r.x, r.y, r.w, r.h, panel)
 	fillRect(r.x, r.y, r.w, 2, c)
 	drawIcon(iconAir, r.x+8, r.y+9, c)
 	text(&proggy.TinySZ8pt7b, r.x+24, r.y+16, "LAMBDA", gray)
 	val := "--"
-	if latestLambda >= 0 {
-		val = strconv.FormatFloat(latestLambda, 'f', 2, 64)
+	if lambda >= 0 {
+		val = strconv.FormatFloat(lambda, 'f', 2, 64)
 	}
 	text(&freemono.Bold18pt7b, r.x+70, r.y+42, val, c)
 	text(&proggy.TinySZ8pt7b, r.x+190, r.y+42, "lambda", gray)
 	fillRect(r.x+12, r.y+50, r.w-24, 6, gray)
-	if latestLambda > 0 {
-		pct := int((latestLambda - 0.7) * 100 / 0.6)
+	if lambda > 0 {
+		pct := int((lambda - 0.7) * 100 / 0.6)
 		if pct < 0 {
 			pct = 0
 		}
@@ -524,10 +580,17 @@ func drawDiagnosticsPage() {
 }
 
 func drawVoltageTile(r rect) {
+	v, ok := readingNumber("42")
+	if !ok {
+		v = -1
+	}
 	c := cyan
-	if latestVoltage >= 0 && latestVoltage < 11.8 {
+	if v >= 0 && v < 11.8 {
 		c = red
-	} else if latestVoltage >= 0 && latestVoltage < 12.2 {
+	} else if v >= 0 && v < 12.2 {
+		c = amber
+	}
+	if readingStale("42") {
 		c = amber
 	}
 	fillRect(r.x, r.y, r.w, r.h, panel)
@@ -535,8 +598,8 @@ func drawVoltageTile(r rect) {
 	drawIcon(iconGauge, r.x+8, r.y+9, c)
 	text(&proggy.TinySZ8pt7b, r.x+24, r.y+16, "TENSAO", gray)
 	val := "--"
-	if latestVoltage >= 0 {
-		val = strconv.FormatFloat(latestVoltage, 'f', 1, 64)
+	if v >= 0 {
+		val = strconv.FormatFloat(v, 'f', 1, 64)
 	}
 	drawFitCentered(r, r.y+43, val, c)
 	textCentered(&proggy.TinySZ8pt7b, r, r.y+57, "V", gray)
@@ -584,8 +647,9 @@ func drawTripPage() {
 	bottomH := in.h - topH - gap
 
 	used := 0.0
-	if tripFuelStart >= 0 && latestFuel >= 0 {
-		used = (tripFuelStart - latestFuel) * 0.44
+	fuel, fuelOK := readingNumber("2F")
+	if tripFuelStart >= 0 && fuelOK {
+		used = (tripFuelStart - fuel) * 0.44
 		if used < 0 {
 			used = 0
 		}
@@ -635,9 +699,27 @@ func drawDataPage() {
 	bottomY := in.y + topH + gap
 	bottomH := in.h - topH - gap
 
-	drawDataTile(rect{in.x, in.y, topW, topH}, iconGauge, "VELOCIDADE", strconv.Itoa(latestSpeed), "km/h", cyan)
-	drawDataTile(rect{in.x + topW + gap, in.y, topW, topH}, iconGauge, "RPM", strconv.Itoa(latestRPM), "rpm", white)
-	drawFuelTile(rect{in.x, bottomY, in.w, bottomH})
+	t := pages[1].Tiles
+	speed, speedOK := readingNumber(t[0].PID)
+	rpm, rpmOK := readingNumber(t[1].PID)
+	speedS, rpmS := "--", "--"
+	if speedOK {
+		speedS = strconv.Itoa(int(speed))
+	}
+	if rpmOK {
+		rpmS = strconv.Itoa(int(rpm))
+	}
+	speedC, rpmC := cyan, white
+	if readingStale("0D") {
+		speedC = amber
+	}
+	if readingStale("0C") {
+		rpmC = amber
+	}
+	drawDataTile(rect{in.x, in.y, topW, topH}, t[0].Icon, t[0].Label, speedS, t[0].Unit, speedC)
+	drawDataTile(rect{in.x + topW + gap, in.y, topW, topH}, t[1].Icon, t[1].Label, rpmS, t[1].Unit, rpmC)
+	fuelPct, fuelOK2 := readingNumber(t[2].PID)
+	drawFuelTile(rect{in.x, bottomY, in.w, bottomH}, t[2].Label, fuelPct, fuelOK2, readingStale(t[2].PID))
 }
 
 func drawDataTile(r rect, icon int, label, value, unit string, c color.RGBA) {
@@ -649,16 +731,20 @@ func drawDataTile(r rect, icon int, label, value, unit string, c color.RGBA) {
 	textCentered(&proggy.TinySZ8pt7b, r, r.y+59, unit, gray)
 }
 
-func drawFuelTile(r rect) {
+func drawFuelTile(r rect, label string, fuel float64, ok bool, stale bool) {
+	c := green
+	if stale {
+		c = amber
+	}
 	fillRect(r.x, r.y, r.w, r.h, panel)
-	fillRect(r.x, r.y, r.w, 2, green)
-	drawIcon(iconFuel, r.x+8, r.y+9, green)
-	text(&proggy.TinySZ8pt7b, r.x+24, r.y+16, "COMBUSTIVEL", gray)
+	fillRect(r.x, r.y, r.w, 2, c)
+	drawIcon(iconFuel, r.x+8, r.y+9, c)
+	text(&proggy.TinySZ8pt7b, r.x+24, r.y+16, label, gray)
 	val := "--"
 	pct := 0
-	if latestFuel >= 0 {
-		pct = int(latestFuel)
-		val = strconv.FormatFloat(latestFuel*0.44, 'f', 1, 64) + " L"
+	if ok {
+		pct = int(fuel)
+		val = strconv.FormatFloat(fuel*0.44, 'f', 1, 64) + " L"
 	}
 	text(&freemono.Bold18pt7b, r.x+70, r.y+42, val, green)
 	text(&proggy.TinySZ8pt7b, r.x+190, r.y+42, strconv.Itoa(pct)+"%", gray)

@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"tinygo.org/x/bluetooth"
+
+	"m5stick-obd2-cnx/internal/obdpid"
 )
 
 var adapter = bluetooth.DefaultAdapter
@@ -84,14 +86,6 @@ func main() {
 
 	initDisplay()
 	initButtons()
-	latestFuel = -1
-	latestCoolant = -1
-	latestIntake = -1
-	latestCat = -1
-	latestLoad = -1
-	latestThrottle = -1
-	latestLambda = -1
-	latestVoltage = -1
 	dtcCount = -1
 	tripFuelStart = -1
 	tripLast = time.Now()
@@ -286,6 +280,7 @@ func emitPID(e *elm, p pidSpec, start time.Time) bool {
 	if err != nil || strings.Contains(resp, "NO DATA") {
 		errCount++
 		txLines++
+		readingStore.PutQuality(p.pid, obdpid.QualityNoData)
 		println("E," + strconv.FormatInt(ms, 10) + ",NO_DATA," + p.pid)
 		return false
 	}
@@ -294,14 +289,12 @@ func emitPID(e *elm, p pidSpec, start time.Time) bool {
 	if !ok {
 		errCount++
 		txLines++
+		readingStore.PutQuality(p.pid, obdpid.QualityInvalid)
 		println("E," + strconv.FormatInt(ms, 10) + ",PARSE_ERROR," + p.pid)
 		return false
 	}
 
-	if v, ok := decode(p.kind, data); ok {
-		setLatest(p.pid, v)
-	}
-	samples++
+	ingest(p.pid, data, obdpid.SourceLive)
 	txLines++
 	println("P," + strconv.FormatInt(ms, 10) + "," + p.pid + "," + hexBytes(data) +
 		"," + strconv.FormatInt(lat, 10) + ",OK")
@@ -345,91 +338,6 @@ func readDiagnostics(e *elm) {
 		h = h[4:]
 	}
 	dtcCount = count
-}
-
-func setLatest(pid string, v float64) {
-	switch pid {
-	case "0D":
-		now := time.Now()
-		if !tripLast.IsZero() {
-			dt := now.Sub(tripLast).Hours()
-			tripKm += float64(int(v)) * dt
-		}
-		tripLast = now
-		latestSpeed = int(v)
-	case "0C":
-		latestRPM = int(v)
-	case "2F":
-		latestFuel = v
-		if tripFuelStart < 0 {
-			tripFuelStart = v
-		}
-	case "42":
-		latestVoltage = v
-	case "05":
-		latestCoolant = int(v)
-	case "0F":
-		latestIntake = int(v)
-	case "3C":
-		latestCat = int(v)
-	case "04":
-		latestLoad = v
-	case "11":
-		latestThrottle = v
-	case "44":
-		latestLambda = v
-	}
-}
-
-func decode(kind byte, d []byte) (float64, bool) {
-	switch kind {
-	case kRPM:
-		if len(d) < 2 {
-			return 0, false
-		}
-		return float64(int(d[0])*256+int(d[1])) / 4, true
-	case kSpeed, kMAP, kBaro:
-		if len(d) < 1 {
-			return 0, false
-		}
-		return float64(d[0]), true
-	case kTemp:
-		if len(d) < 1 {
-			return 0, false
-		}
-		return float64(int(d[0]) - 40), true
-	case kPct:
-		if len(d) < 1 {
-			return 0, false
-		}
-		return float64(d[0]) * 100 / 255, true
-	case kMAF:
-		if len(d) < 2 {
-			return 0, false
-		}
-		return float64(int(d[0])*256+int(d[1])) / 100, true
-	case kVoltage:
-		if len(d) < 2 {
-			return 0, false
-		}
-		return float64(int(d[0])*256+int(d[1])) / 1000, true
-	case kCatalyst:
-		if len(d) < 2 {
-			return 0, false
-		}
-		return float64(int(d[0])*256+int(d[1]))/10 - 40, true
-	case kLambda:
-		if len(d) < 2 {
-			return 0, false
-		}
-		return 2 * float64(int(d[0])*256+int(d[1])) / 65536, true
-	case kTrim:
-		if len(d) < 1 {
-			return 0, false
-		}
-		return (float64(d[0]) - 128) * 100 / 128, true
-	}
-	return 0, false
 }
 
 func (e *elm) command(cmd string, timeout time.Duration) (string, error) {
