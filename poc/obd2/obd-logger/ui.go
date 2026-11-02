@@ -3,7 +3,6 @@ package main
 import (
 	"image/color"
 	"machine"
-	"strconv"
 	"sync/atomic"
 	"time"
 
@@ -78,7 +77,6 @@ var (
 	heartOn       bool
 	lastHeartbeat time.Time
 	lastStatusUI  time.Time
-	lastCompose   time.Time
 )
 
 const (
@@ -118,10 +116,10 @@ func (r rect) bottom() int16 { return r.y + r.h }
 
 type canvas struct{}
 
-func (canvas) Size() (int16, int16) { return screenW, screenH }
-func (canvas) Display() error       { return nil }
+func (*canvas) Size() (int16, int16) { return screenW, screenH }
+func (*canvas) Display() error       { return nil }
 
-func (canvas) SetPixel(x, y int16, c color.RGBA) {
+func (*canvas) SetPixel(x, y int16, c color.RGBA) {
 	if x < 0 || y < 0 || x >= screenW || y >= screenH {
 		return
 	}
@@ -135,7 +133,7 @@ func (canvas) SetPixel(x, y int16, c color.RGBA) {
 	}
 }
 
-var cv canvas
+var cv = &canvas{}
 
 func initDisplay() {
 	machine.SPI2.Configure(machine.SPIConfig{
@@ -287,7 +285,7 @@ func uiLoop() {
 	for {
 		serialLink.Poll()
 		if uiPaused {
-			time.Sleep(16 * time.Millisecond)
+			time.Sleep(12 * time.Millisecond)
 			continue
 		}
 		if handleButtons() {
@@ -313,17 +311,15 @@ func uiLoop() {
 			composePage()
 			drawHeartbeat()
 			flushRect(0, 0, screenW, screenH)
-			lastCompose = now
 			dirtyAll = false
 			dirtyTiles = 0
-		} else if dirtyTiles != 0 && now.Sub(lastCompose) >= 100*time.Millisecond {
+		} else if dirtyTiles != 0 {
 			composePage()
 			drawHeartbeat()
 			flushDirtyTiles()
-			lastCompose = now
 			dirtyTiles = 0
 		}
-		time.Sleep(16 * time.Millisecond)
+		time.Sleep(12 * time.Millisecond)
 	}
 }
 
@@ -503,9 +499,9 @@ func drawStatusPage() {
 	drawStatusTile(rect{in.x, in.y, colW, rowH}, iconTx, "SERIAL", serialValue, serialFill, serialAccent)
 	drawStatusTile(rect{in.x + colW + gap, in.y, colW, rowH}, iconBLE, "BLE", bleValue, bleFill, bleAccent)
 	drawStatusTile(rect{in.x + 2*(colW+gap), in.y, w3, rowH}, iconLink, "ELM", elmValue, elmFill, elmAccent)
-	drawStatusTile(rect{in.x, in.y + rowH + gap, colW, h2}, iconRate, "PID/s", strconv.FormatFloat(rate, 'f', 1, 64), panel, cyan)
-	drawStatusTile(rect{in.x + colW + gap, in.y + rowH + gap, colW, h2}, iconTx, "TX", strconv.Itoa(txLines), darkAmber, amber)
-	drawStatusTile(rect{in.x + 2*(colW+gap), in.y + rowH + gap, w3, h2}, iconErr, "ERR", strconv.Itoa(errCount), errFill, errCol)
+	drawStatusTile(rect{in.x, in.y + rowH + gap, colW, h2}, iconRate, "PID/s", num1(rate), panel, cyan)
+	drawStatusTile(rect{in.x + colW + gap, in.y + rowH + gap, colW, h2}, iconTx, "TX", num(txLines), darkAmber, amber)
+	drawStatusTile(rect{in.x + 2*(colW+gap), in.y + rowH + gap, w3, h2}, iconErr, "ERR", num(errCount), errFill, errCol)
 }
 
 func drawStatusTile(r rect, icon int, label, value string, fill, accent color.RGBA) {
@@ -553,7 +549,7 @@ func drawTempTile(r rect, icon int, label string, v int, stale bool, max, warn, 
 	text(&proggy.TinySZ8pt7b, r.x+24, r.y+16, label, gray)
 	val := "--"
 	if v >= 0 {
-		val = strconv.Itoa(v)
+		val = num(v)
 	}
 	drawFitCentered(r, r.y+43, val, c)
 	textCentered(&proggy.TinySZ8pt7b, r, r.y+57, "C", gray)
@@ -578,7 +574,7 @@ func drawCatalystTile(r rect, label string, cat int, stale bool) {
 	text(&proggy.TinySZ8pt7b, r.x+24, r.y+16, label, gray)
 	val := "--"
 	if cat >= 0 {
-		val = strconv.Itoa(cat) + " C"
+		val = numS(cat, " C")
 	}
 	text(&freemono.Bold18pt7b, r.x+70, r.y+42, val, c)
 	fillRect(r.x+12, r.y+50, r.w-24, 6, gray)
@@ -646,7 +642,7 @@ func drawPercentTile(r rect, icon int, label string, v float64, c color.RGBA) {
 	pct := 0
 	if v >= 0 {
 		pct = int(v)
-		val = strconv.Itoa(pct)
+		val = num(pct)
 	}
 	drawFitCentered(r, r.y+43, val, c)
 	textCentered(&proggy.TinySZ8pt7b, r, r.y+57, "%", gray)
@@ -667,7 +663,7 @@ func drawLambdaTile(r rect, lambda float64, stale bool) {
 	text(&proggy.TinySZ8pt7b, r.x+24, r.y+16, "LAMBDA", gray)
 	val := "--"
 	if lambda >= 0 {
-		val = strconv.FormatFloat(lambda, 'f', 2, 64)
+		val = num2(lambda)
 	}
 	text(&freemono.Bold18pt7b, r.x+70, r.y+42, val, c)
 	text(&proggy.TinySZ8pt7b, r.x+190, r.y+42, "lambda", gray)
@@ -757,7 +753,7 @@ func drawVoltageTile(r rect) {
 	text(&proggy.TinySZ8pt7b, r.x+24, r.y+16, "TENSAO", gray)
 	val := "--"
 	if v >= 0 {
-		val = strconv.FormatFloat(v, 'f', 1, 64)
+		val = num1(v)
 	}
 	drawFitCentered(r, r.y+43, val, c)
 	textCentered(&proggy.TinySZ8pt7b, r, r.y+57, "V", gray)
@@ -791,7 +787,7 @@ func drawDTCTile(r rect) {
 	text(&proggy.TinySZ8pt7b, r.x+24, r.y+16, "DTCS", gray)
 	val := "--"
 	if dtcCount >= 0 {
-		val = strconv.Itoa(dtcCount)
+		val = num(dtcCount)
 	}
 	text(&freemono.Bold18pt7b, r.x+70, r.y+42, val, c)
 	text(&proggy.TinySZ8pt7b, r.x+190, r.y+42, "confirmados", gray)
@@ -817,8 +813,8 @@ func drawTripPage() {
 		avg = tripKm / used
 	}
 
-	drawTripValueTile(rect{in.x, in.y, topW, topH}, iconGauge, "DISTANCIA", strconv.FormatFloat(tripKm, 'f', 2, 64), "km", cyan)
-	drawTripValueTile(rect{in.x + topW + gap, in.y, topW, topH}, iconFuel, "COMBUSTIVEL", strconv.FormatFloat(used, 'f', 2, 64), "L usados", amber)
+	drawTripValueTile(rect{in.x, in.y, topW, topH}, iconGauge, "DISTANCIA", num2(tripKm), "km", cyan)
+	drawTripValueTile(rect{in.x + topW + gap, in.y, topW, topH}, iconFuel, "COMBUSTIVEL", num2(used), "L usados", amber)
 	drawConsumptionTile(rect{in.x, bottomY, in.w, bottomH}, avg)
 }
 
@@ -844,7 +840,7 @@ func drawConsumptionTile(r rect, avg float64) {
 	text(&proggy.TinySZ8pt7b, r.x+24, r.y+16, "CONSUMO", gray)
 	val := "--"
 	if avg >= 0 {
-		val = strconv.FormatFloat(avg, 'f', 1, 64)
+		val = num1(avg)
 	}
 	text(&freemono.Bold18pt7b, r.x+70, r.y+42, val, c)
 	text(&proggy.TinySZ8pt7b, r.x+190, r.y+42, "km/L", gray)
@@ -862,10 +858,10 @@ func drawDataPage() {
 	rpm, rpmOK := readingNumber(t[1].PID)
 	speedS, rpmS := "--", "--"
 	if speedOK {
-		speedS = strconv.Itoa(int(speed))
+		speedS = num(int(speed))
 	}
 	if rpmOK {
-		rpmS = strconv.Itoa(int(rpm))
+		rpmS = num(int(rpm))
 	}
 	speedC, rpmC := cyan, white
 	if readingStale("0D") {
@@ -902,10 +898,10 @@ func drawFuelTile(r rect, label string, fuel float64, ok bool, stale bool) {
 	pct := 0
 	if ok {
 		pct = int(fuel)
-		val = strconv.FormatFloat(fuel*0.44, 'f', 1, 64) + " L"
+		val = num1S(fuel*0.44, " L")
 	}
 	text(&freemono.Bold18pt7b, r.x+70, r.y+42, val, green)
-	text(&proggy.TinySZ8pt7b, r.x+190, r.y+42, strconv.Itoa(pct)+"%", gray)
+	text(&proggy.TinySZ8pt7b, r.x+190, r.y+42, numS(pct, "%"), gray)
 	fillRect(r.x+12, r.y+50, r.w-24, 6, gray)
 	if pct > 0 {
 		fillRect(r.x+12, r.y+50, int16(int(r.w-24)*pct/100), 6, green)
@@ -913,7 +909,7 @@ func drawFuelTile(r rect, label string, fuel float64, ok bool, stale bool) {
 }
 
 func drawFitCentered(r rect, baseline int16, s string, c color.RGBA) {
-	f := tinyfont.Fonter(&freemono.Bold18pt7b)
+	f := &freemono.Bold18pt7b
 	if textWidth(f, s)+8 > r.w {
 		f = &freemono.Bold12pt7b
 	}
@@ -1069,23 +1065,43 @@ func yesNo(v bool) string {
 	return "ERR"
 }
 
-func pad2(v int) string {
-	if v < 10 {
-		return "0" + strconv.Itoa(v)
+// text draws a string without tinyfont's per-call rotation wrapper and color
+// slice, both of which allocate on the heap. Glyphs are looked up directly in
+// the font table, which keeps the render path allocation-free.
+func text(f *tinyfont.Font, x, y int16, s string, c color.RGBA) {
+	nx := x
+	for _, r := range s {
+		g := glyphFor(f, r)
+		g.Draw(cv, nx, y, c)
+		nx += int16(g.XAdvance)
 	}
-	return strconv.Itoa(v)
 }
 
-func text(f tinyfont.Fonter, x, y int16, s string, c color.RGBA) {
-	tinyfont.WriteLine(cv, f, x, y, s, c)
+func glyphFor(f *tinyfont.Font, r rune) tinyfont.Glyph {
+	lo, hi := 0, len(f.Glyphs)-1
+	for lo <= hi {
+		m := (lo + hi) / 2
+		if f.Glyphs[m].Rune < r {
+			lo = m + 1
+		} else {
+			hi = m - 1
+		}
+	}
+	if lo < len(f.Glyphs) && f.Glyphs[lo].Rune == r {
+		return f.Glyphs[lo]
+	}
+	return tinyfont.Glyph{}
 }
 
-func textWidth(f tinyfont.Fonter, s string) int16 {
-	w, _ := tinyfont.LineWidth(f, s)
-	return int16(w)
+func textWidth(f *tinyfont.Font, s string) int16 {
+	var w int16
+	for _, r := range s {
+		w += int16(glyphFor(f, r).XAdvance)
+	}
+	return w
 }
 
-func textCentered(f tinyfont.Fonter, r rect, baseline int16, s string, c color.RGBA) {
+func textCentered(f *tinyfont.Font, r rect, baseline int16, s string, c color.RGBA) {
 	x := r.x + (r.w-textWidth(f, s))/2
 	text(f, x, baseline, s, c)
 }
