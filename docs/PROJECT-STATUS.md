@@ -68,6 +68,8 @@ X,<ms>,<motivo>
 - página 2: velocidade, RPM e combustível;
 - página 3: água, ar admitido e catalisador;
 - página 4: carga, borboleta e lambda;
+- página 5: tensão, MIL e DTCs;
+- página 6: distância, combustível usado e consumo;
 - botões A/B (interrupt + polling fallback);
 - ACK serial do host para o estado `SERIAL`.
 
@@ -129,6 +131,8 @@ data/<sessão>/
 | Cores após `IsBGR(false)` | ⏳ pendente de confirmação |
 | Página 3 (temperaturas) | ⏳ pendente de confirmação visual |
 | Página 4 (motor) | ⏳ pendente de confirmação visual |
+| Página 5 (diagnóstico) | ⏳ pendente de confirmação visual |
+| Página 6 (viagem) | ⏳ pendente de confirmação visual |
 | Log real de 5–10 min | ⏳ pendente |
 
 ## 5. Decisões tomadas

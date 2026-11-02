@@ -125,6 +125,50 @@ Layout assimétrico:
 
 O lambda tem uma marca branca no centro (λ=1,00).
 
+## Página 5 — DIAGNÓSTICO
+
+```text
+┌──────────────────┬──────────────────┐
+│      TENSAO      │       MIL        │
+│      12.5 V      │       OFF        │
+├──────────────────┴──────────────────┤
+│              DTCS                   │
+│                0                    │
+└──────────────────────────────────────┘
+```
+
+| Dado | Fonte |
+|---|---|
+| Tensão do módulo | `0142` |
+| MIL/check engine | `0101` bit 7 |
+| DTCs armazenados | Mode `03` |
+
+Cores:
+
+- tensão <11,8 V = vermelho; 11,8–12,2 V = amarelo; acima = ciano;
+- MIL ON = vermelho; OFF = verde;
+- DTCs >0 = vermelho; 0 = verde.
+
+## Página 6 — VIAGEM
+
+```text
+┌──────────────────┬──────────────────┐
+│    DISTANCIA     │   COMBUSTIVEL    │
+│      12.40 km    │      1.25 L      │
+├──────────────────┴──────────────────┤
+│              CONSUMO                │
+│               9.9 km/L              │
+└──────────────────────────────────────┘
+```
+
+Dados derivados:
+
+- distância integrada da velocidade (`010D`);
+- combustível usado pela diferença do nível (`012F`, tanque de 44 L);
+- consumo = distância / combustível usado.
+
+A distância e o consumo zeram quando o firmware reinicia.
+
 ## Tipografia
 
 - valores grandes: `Bold18`;

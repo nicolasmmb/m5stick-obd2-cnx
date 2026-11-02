@@ -89,9 +89,12 @@ func main() {
 	latestLoad = -1
 	latestThrottle = -1
 	latestLambda = -1
+	latestVoltage = -1
+	dtcCount = -1
+	tripFuelStart = -1
+	tripLast = time.Now()
 	bootTime = time.Now()
 	started = bootTime
-	go serialAckLoop()
 	go uiLoop()
 
 	time.Sleep(time.Second)
@@ -106,6 +109,7 @@ func main() {
 
 	for {
 		err := runSession()
+		uiPaused = false
 		if err != nil {
 			println("obd-logger:", err.Error())
 		}
@@ -117,6 +121,14 @@ func main() {
 		}
 		time.Sleep(5 * time.Second)
 	}
+}
+
+func debugStep(s string) {
+	ms := int64(0)
+	if !started.IsZero() {
+		ms = int64(time.Since(started) / time.Millisecond)
+	}
+	println("E," + strconv.FormatInt(ms, 10) + ",DEBUG," + s)
 }
 
 func runSession() error {
@@ -148,40 +160,66 @@ func runSession() error {
 	}
 	<-done
 	if !found {
+		debugStep("no_device")
 		return &simpleError{"no OBDII BLE device found"}
 	}
+	debugStep("found")
 
+	time.Sleep(150 * time.Millisecond)
+	// Pause the full-screen UI only during Connect, where it could compete
+	// with the BLE controller.
+	debugStep("connecting")
+	uiPaused = true
+	// If Connect blocks longer than expected, let the UI resume so the
+	// display does not stay frozen on LINK forever.
+	go func() {
+		time.Sleep(3 * time.Second)
+		uiPaused = false
+	}()
 	dev, err := adapter.Connect(addr, bluetooth.ConnectionParams{})
 	if err != nil {
+		debugStep("connect_error")
 		return err
 	}
 	bleState = bleConnected
+	elmState = elmInit
+	uiPaused = false
+	debugStep("connected")
+	debugStep("services")
 	services, err := dev.DiscoverServices([]bluetooth.UUID{uuidFFF0})
 	if err != nil {
+		debugStep("services_error")
 		return err
 	}
+	debugStep("chars")
 	chars, err := services[0].DiscoverCharacteristics([]bluetooth.UUID{uuidFFF1, uuidFFF2})
 	if err != nil {
+		debugStep("chars_error")
 		return err
 	}
 	notifyChar := chars[0]
 	writeChar := chars[1]
+	debugStep("notify")
 	if err := notifyChar.EnableNotifications(func(buf []byte) {
 		mu.Lock()
 		rx = append(rx, buf...)
 		mu.Unlock()
 	}); err != nil {
+		debugStep("notify_error")
 		return err
 	}
 	elmState = elmInit
 	e := &elm{write: writeChar}
 	for _, cmd := range []string{"ATZ", "ATE0", "ATL0", "ATS0", "ATSP0"} {
 		if _, err := e.command(cmd, 3*time.Second); err != nil {
+			debugStep("handshake_error_" + cmd)
 			return &simpleError{"handshake " + cmd + ": " + err.Error()}
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
 	elmState = elmOK
+	debugStep("handshake_ok")
+	readDiagnostics(e)
 
 	vin := readVIN(e)
 	start := time.Now()
@@ -241,14 +279,64 @@ func emitPID(e *elm, p pidSpec, start time.Time) bool {
 	return true
 }
 
+func readDiagnostics(e *elm) {
+	// MIL from PID 01, byte A bit 7.
+	if resp, err := e.command("0101", 2*time.Second); err == nil {
+		if d, ok := pidData(resp, "01"); ok && len(d) > 0 {
+			milOn = d[0]&0x80 != 0
+		}
+	}
+
+	// Stored DTCs from Mode 03. Response starts with 43, not 41.
+	resp, err := e.command("03", 3*time.Second)
+	if err != nil {
+		return
+	}
+	s := strings.ToUpper(resp)
+	s = strings.ReplaceAll(s, "\r", "")
+	s = strings.ReplaceAll(s, "\n", "")
+	s = strings.ReplaceAll(s, " ", "")
+	s = strings.ReplaceAll(s, ">", "")
+	i := strings.Index(s, "43")
+	if i < 0 {
+		return
+	}
+	h := s[i+2:]
+	count := 0
+	for len(h) >= 4 {
+		b1, err1 := strconv.ParseUint(h[:2], 16, 8)
+		b2, err2 := strconv.ParseUint(h[2:4], 16, 8)
+		if err1 != nil || err2 != nil {
+			break
+		}
+		if (b1 == 0 && b2 == 0) || (b1 == 0xAA && b2 == 0xAA) {
+			break
+		}
+		count++
+		h = h[4:]
+	}
+	dtcCount = count
+}
+
 func setLatest(pid string, v float64) {
 	switch pid {
 	case "0D":
+		now := time.Now()
+		if !tripLast.IsZero() {
+			dt := now.Sub(tripLast).Hours()
+			tripKm += float64(int(v)) * dt
+		}
+		tripLast = now
 		latestSpeed = int(v)
 	case "0C":
 		latestRPM = int(v)
 	case "2F":
 		latestFuel = v
+		if tripFuelStart < 0 {
+			tripFuelStart = v
+		}
+	case "42":
+		latestVoltage = v
 	case "05":
 		latestCoolant = int(v)
 	case "0F":

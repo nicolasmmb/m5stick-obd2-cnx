@@ -17,11 +17,11 @@ import (
 const (
 	screenW   = 240
 	screenH   = 135
-	bandRows  = 24
+	bandRows  = 4
 	inset     = 1
 	gap       = 2
 	contentH  = screenH - inset*2 - 3
-	pageCount = 4
+	pageCount = 6
 )
 
 var (
@@ -74,7 +74,14 @@ var (
 	latestLoad     float64
 	latestThrottle float64
 	latestLambda   float64
+	latestVoltage  float64
+	dtcCount       int
+	milOn          bool
+	tripKm         float64
+	tripFuelStart  float64
+	tripLast       time.Time
 	lastDraw       time.Time
+	uiPaused       bool
 )
 
 const (
@@ -219,22 +226,20 @@ func serialStatus() (string, color.RGBA, color.RGBA) {
 	return "DISC", darkRed, red
 }
 
-func serialAckLoop() {
-	buf := make([]byte, 32)
-	for {
-		n := machine.Serial.Buffered()
-		if n > 0 {
-			if n > len(buf) {
-				n = len(buf)
-			}
-			m, _ := machine.Serial.Read(buf[:n])
-			for _, b := range buf[:m] {
-				if b == 'A' {
-					atomic.StoreInt64(&serialAckNano, time.Now().UnixNano())
-				}
-			}
+func pollSerialAck() {
+	n := machine.Serial.Buffered()
+	if n <= 0 {
+		return
+	}
+	if n > 32 {
+		n = 32
+	}
+	var buf [32]byte
+	m, _ := machine.Serial.Read(buf[:n])
+	for _, b := range buf[:m] {
+		if b == 'A' {
+			atomic.StoreInt64(&serialAckNano, time.Now().UnixNano())
 		}
-		time.Sleep(20 * time.Millisecond)
 	}
 }
 
@@ -273,6 +278,11 @@ func handleButtons() bool {
 
 func uiLoop() {
 	for {
+		pollSerialAck()
+		if uiPaused {
+			time.Sleep(100 * time.Millisecond)
+			continue
+		}
 		if handleButtons() {
 			drawPage()
 		} else if time.Since(lastDraw) > 500*time.Millisecond {
@@ -293,6 +303,10 @@ func drawPage() {
 		drawTemperaturePage()
 	case 3:
 		drawEnginePage()
+	case 4:
+		drawDiagnosticsPage()
+	case 5:
+		drawTripPage()
 	}
 	drawPageDots()
 	flushRows(0, screenH-1)
@@ -512,6 +526,123 @@ func lambdaColor(v float64) color.RGBA {
 		return amber
 	}
 	return green
+}
+
+func drawDiagnosticsPage() {
+	in := innerRect()
+	topH := int16(65)
+	topW := (in.w - gap) / 2
+	bottomY := in.y + topH + gap
+	bottomH := in.h - topH - gap
+
+	drawVoltageTile(rect{in.x, in.y, topW, topH})
+	drawMILTile(rect{in.x + topW + gap, in.y, topW, topH})
+	drawDTCTile(rect{in.x, bottomY, in.w, bottomH})
+}
+
+func drawVoltageTile(r rect) {
+	c := cyan
+	if latestVoltage >= 0 && latestVoltage < 11.8 {
+		c = red
+	} else if latestVoltage >= 0 && latestVoltage < 12.2 {
+		c = amber
+	}
+	fillRect(r.x, r.y, r.w, r.h, panel)
+	fillRect(r.x, r.y, r.w, 2, c)
+	drawIcon(iconGauge, r.x+8, r.y+9, c)
+	text(&proggy.TinySZ8pt7b, r.x+24, r.y+16, "TENSAO", gray)
+	val := "--"
+	if latestVoltage >= 0 {
+		val = strconv.FormatFloat(latestVoltage, 'f', 1, 64)
+	}
+	drawFitCentered(r, r.y+43, val, c)
+	textCentered(&proggy.TinySZ8pt7b, r, r.y+57, "V", gray)
+}
+
+func drawMILTile(r rect) {
+	c := green
+	if milOn {
+		c = red
+	}
+	fillRect(r.x, r.y, r.w, r.h, panel)
+	fillRect(r.x, r.y, r.w, 2, c)
+	drawIcon(iconErr, r.x+8, r.y+9, c)
+	text(&proggy.TinySZ8pt7b, r.x+24, r.y+16, "MIL", gray)
+	val := "OFF"
+	if milOn {
+		val = "ON"
+	}
+	drawFitCentered(r, r.y+43, val, c)
+	textCentered(&proggy.TinySZ8pt7b, r, r.y+57, "check engine", gray)
+}
+
+func drawDTCTile(r rect) {
+	c := green
+	if dtcCount > 0 {
+		c = red
+	}
+	fillRect(r.x, r.y, r.w, r.h, panel)
+	fillRect(r.x, r.y, r.w, 2, c)
+	drawIcon(iconErr, r.x+8, r.y+9, c)
+	text(&proggy.TinySZ8pt7b, r.x+24, r.y+16, "DTCS", gray)
+	val := "--"
+	if dtcCount >= 0 {
+		val = strconv.Itoa(dtcCount)
+	}
+	text(&freemono.Bold18pt7b, r.x+70, r.y+42, val, c)
+	text(&proggy.TinySZ8pt7b, r.x+190, r.y+42, "confirmados", gray)
+}
+
+func drawTripPage() {
+	in := innerRect()
+	topH := int16(65)
+	topW := (in.w - gap) / 2
+	bottomY := in.y + topH + gap
+	bottomH := in.h - topH - gap
+
+	used := 0.0
+	if tripFuelStart >= 0 && latestFuel >= 0 {
+		used = (tripFuelStart - latestFuel) * 0.44
+		if used < 0 {
+			used = 0
+		}
+	}
+	avg := -1.0
+	if used > 0.05 {
+		avg = tripKm / used
+	}
+
+	drawTripValueTile(rect{in.x, in.y, topW, topH}, iconGauge, "DISTANCIA", strconv.FormatFloat(tripKm, 'f', 2, 64), "km", cyan)
+	drawTripValueTile(rect{in.x + topW + gap, in.y, topW, topH}, iconFuel, "COMBUSTIVEL", strconv.FormatFloat(used, 'f', 2, 64), "L usados", amber)
+	drawConsumptionTile(rect{in.x, bottomY, in.w, bottomH}, avg)
+}
+
+func drawTripValueTile(r rect, icon int, label, value, unit string, c color.RGBA) {
+	fillRect(r.x, r.y, r.w, r.h, panel)
+	fillRect(r.x, r.y, r.w, 2, c)
+	drawIcon(icon, r.x+8, r.y+9, c)
+	text(&proggy.TinySZ8pt7b, r.x+24, r.y+16, label, gray)
+	drawFitCentered(r, r.y+43, value, c)
+	textCentered(&proggy.TinySZ8pt7b, r, r.y+57, unit, gray)
+}
+
+func drawConsumptionTile(r rect, avg float64) {
+	c := green
+	if avg < 0 || avg < 5 {
+		c = red
+	} else if avg < 10 {
+		c = amber
+	}
+	fillRect(r.x, r.y, r.w, r.h, panel)
+	fillRect(r.x, r.y, r.w, 2, c)
+	drawIcon(iconRate, r.x+8, r.y+9, c)
+	text(&proggy.TinySZ8pt7b, r.x+24, r.y+16, "CONSUMO", gray)
+	val := "--"
+	if avg >= 0 {
+		val = strconv.FormatFloat(avg, 'f', 1, 64)
+	}
+	text(&freemono.Bold18pt7b, r.x+70, r.y+42, val, c)
+	text(&proggy.TinySZ8pt7b, r.x+190, r.y+42, "km/L", gray)
 }
 
 func drawDataPage() {
