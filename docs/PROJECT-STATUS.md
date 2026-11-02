@@ -71,7 +71,10 @@ X,<ms>,<motivo>
 - página 5: tensão, MIL e DTCs;
 - página 6: distância, combustível usado e consumo;
 - botões A/B (interrupt + polling fallback);
-- ACK serial do host para o estado `SERIAL`.
+- ACK serial do host para o estado `SERIAL`;
+- reconexão automática do BLE com backoff (1/2/5/10 s) e beeps no buzzer;
+- `X` em perda de link, replay e shutdown do host (`C,STOP`);
+- leitura de DTCs armazenados/pendentes/permanentes e readiness.
 
 ### Host `cmd/obd-logger`
 
@@ -92,9 +95,10 @@ data/<sessão>/
   invalid.log
 ```
 
-- reconexão;
-- Ctrl-C gracioso;
+- reconexão da porta serial;
+- Ctrl-C gracioso com `C,STOP` para o firmware;
 - ACK `A\n` a cada 1 s;
+- resumo de MIL/DTCs/readiness em `metadata.json`;
 - `data/` ignorado pelo git.
 
 ### Documentação
@@ -125,15 +129,15 @@ data/<sessão>/
 | Varredura completa ~7,2 s | ✅ medido |
 | Loader replay compacto | ✅ |
 | Loader replay NDJSON | ✅ |
-| Firmware compacto no carro | ⏳ pendente |
-| Botões A/B | ⏳ pendente de confirmação |
-| SERIAL WAIT/OK/DISC | ⏳ pendente de confirmação |
-| Cores após `IsBGR(false)` | ⏳ pendente de confirmação |
-| Página 3 (temperaturas) | ⏳ pendente de confirmação visual |
-| Página 4 (motor) | ⏳ pendente de confirmação visual |
-| Página 5 (diagnóstico) | ⏳ pendente de confirmação visual |
-| Página 6 (viagem) | ⏳ pendente de confirmação visual |
-| Log real de 5–10 min | ⏳ pendente |
+| Botões A/B | ✅ confirmado |
+| SERIAL WAIT/OK/DISC | ✅ confirmado |
+| Cores após `IsBGR(false)` | ✅ confirmado |
+| Páginas 1–6 | ✅ confirmadas visualmente |
+| Replay 5–10 min sem OOM | ✅ |
+| Reconexão BLE + beeps | ⏳ pendente de hardware |
+| `X` em `ble_lost`/`host` | ⏳ pendente de hardware |
+| DTC/readiness no carro | ⏳ pendente de hardware |
+| Log real de 5–10 min no carro | ⏳ pendente |
 
 ## 5. Decisões tomadas
 
@@ -153,40 +157,41 @@ data/<sessão>/
 
 | Item | Risco/ação |
 |---|---|
-| Botões A/B | Ainda não confirmados; se não funcionarem, criar POC de GPIO |
-| Cores | `IsBGR(false)` foi aplicado; confirmar laranja/vermelho/verde |
-| ACK serial | Confirmar `WAIT → OK → DISC` no hardware |
 | Teste real | Rodar 5–10 min no carro e validar `raw.log`/CSV |
-| BLE cai durante polling | Hoje continua tentando PIDs; falta detectar e reconectar |
+| Reconexão BLE | Validar no hardware: derrubar o adaptador, ouvir os beeps e ver `X,ble_lost` |
+| `C,STOP` | Confirmar `X,host` e `BLE=OFF` após Ctrl-C |
 | VIN | Parser multi-frame precisa ser validado no log real |
-| DTC/readiness | Ainda não entram no logger |
+| DTC/readiness | Validar códigos reais no carro; resposta sem DTC é `43 00 AA...` |
 | Sequência | `P` compacto não tem `seq`; host usa tempo/ordem |
 | Cal ID/Mode 06 | Ainda parciais |
+| BLE após `C,STOP` | `espradio` não tem `Deinit`; a pausa não devolve a arena do controlador |
 
 ## 7. Próximos passos
 
 ### P0 — validar o que está na mão
 
-1. Confirmar troca de página com A/B.
-2. Confirmar cores: WAIT laranja, OK verde, DISC vermelho.
-3. Rodar `make log` e ver SERIAL=OK.
-4. Fechar o loader e ver SERIAL=DISC após 3 s.
-5. Rodar uma sessão real de 5–10 min no carro.
-6. Conferir `raw.log`, `decoded.ndjson` e CSVs.
+1. ~~Confirmar troca de página com A/B.~~ ✅
+2. ~~Confirmar cores: WAIT laranja, OK verde, DISC vermelho.~~ ✅
+3. ~~Rodar `make log` e ver SERIAL=OK.~~ ✅
+4. ~~Fechar o loader e ver SERIAL=DISC após 3 s.~~ ✅
+5. Rodar uma sessão real de 5–10 min no carro. ⏳
+6. Conferir `raw.log`, `decoded.ndjson` e CSVs. ⏳ (dados de serial reais já conferidos)
 
-### P1 — robustez
+### P1 — robustez (implementado, falta hardware)
 
-7. Detectar perda de BLE e reconectar.
-8. Adicionar `seq` ou `session_id` no protocolo.
-9. Emitir `X` em shutdown/reconexão.
-10. Adicionar DTCs/readiness ao logger.
-11. Validar VIN no carro.
-12. Criar teste de hardware para A/B.
+7. ~~Detectar perda de BLE e reconectar.~~ ✅
+8. ~~Emitir `X` em shutdown/reconexão (`C,STOP`).~~ ✅
+9. ~~Adicionar DTCs/readiness ao logger.~~ ✅
+10. Adicionar `seq` ou `session_id` no protocolo. ⏳
+11. Validar VIN no carro. ⏳
+12. Validar reconexão, `X` e DTCs no hardware. ⏳
+
+Detalhes em [P1-ROBUSTNESS.md](P1-ROBUSTNESS.md).
 
 ### P2 — replay e dados
 
-- implementar `cmd/obd-replay` e modo REPLAY no firmware;
-- testar gravações sem o carro;
+- ~~implementar `cmd/obd-replay` e modo REPLAY no firmware~~ ✅;
+- ~~testar gravações sem o carro~~ ✅;
 - migrar a UI para snapshots com qualidade/idade.
 
 ### P3 — dados e ML
@@ -201,15 +206,16 @@ data/<sessão>/
 ## 8. Comandos úteis
 
 ```bash
-make obd-logger         # firmware live com BLE + tela
-make obd-logger-replay  # firmware replay-only, sem BLE linkado
-# Ctrl-C para fechar o monitor
-make log          # lê a serial e grava em data/
-make replay       # testa com sample compacto
+make obd-logger         # grava o firmware live (BLE + tela + replay)
+make log                # lê a serial e grava em data/; Ctrl-C envia C,STOP
+make replay             # testa o loader com sample compacto
+make replay-device      # envia um raw.log ao Stick
 make test
 make build
 make check
 ```
+
+Firmware: um único binário (live + replay).
 
 ### Performance do firmware
 
@@ -223,7 +229,8 @@ make check
 - cache fixo de 64 slots, sem `map` no caminho de leitura/escrita;
 - `Reading` não retém mais `Raw []byte`;
 - texto desenhado direto pelo glifo, sem a slice de cores do `tinyfont`;
-- replay validado por 90 s / 2.436 registros sem OOM, a ~70 ticks/s.
+- replay validado por 90 s / 2.436 registros sem OOM, a ~70 ticks/s;
+- binário P1: flash 307.844 / RAM 59.084 (antes 302.356 / 59.028).
 
 ### BLE no modo replay
 
@@ -246,6 +253,7 @@ firmware para o scan, encerra a conexão e não usa mais o adaptador até um nov
 ## 9. Documentos relacionados
 
 - [README](../README.md)
+- [P1 — robustez](P1-ROBUSTNESS.md)
 - [Plano de otimização](OPTIMIZATION-PLAN.md)
 - [Formato do logger](OBD2-LOGGER-FORMAT.md)
 - [Formato do replay](OBD2-REPLAY-FORMAT.md)
@@ -258,11 +266,6 @@ firmware para o scan, encerra a conexão e não usa mais o adaptador até um nov
 
 ## 10. Estado do git
 
-A última implementação commitada foi:
-
-```text
-a53b791 fix: ui
-```
-
-As mudanças de tela/status/ACK e este documento estão no working tree e ainda
-não foram commitadas.
+A otimização e o replay estão mergeados na `main` (`d0da8ad`). O P1
+(reconexão, `X`/`C,STOP`, DTCs/readiness) está commitado na `main`. O P0-5
+(sessão real de 5–10 min no carro) segue pendente.

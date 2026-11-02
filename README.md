@@ -16,8 +16,10 @@ dados do carro no LCD.
 | BLE GATT no ELM327 | ✅ `FFF0/FFF1/FFF2` |
 | Handshake ELM327 | ✅ `ELM327 v2.1` |
 | PIDs Mode 01 | ✅ 43 suportados |
-| UI OBD2 | ✅ 3 páginas, sem flicker/ghosting |
+| UI OBD2 | ✅ 6 páginas, sem flicker/ghosting |
 | Data loader | ✅ serial compacta → CSV long/wide; replay testado |
+| Reconexão BLE | ✅ backoff 1/2/5/10 s + beeps (validar no hardware) |
+| DTCs/readiness | ✅ eventos `E` + resumo em `metadata.json` |
 | taxa | ~5–7 Hz por PID; varredura completa ~7,2 s |
 
 ## Hardware
@@ -77,7 +79,7 @@ make obd-probe   # enumera GATT do adaptador
 make obd-client  # handshake + PIDs no serial
 make obd-bench   # benchmark dos 43 PIDs
 make obd-tune    # teste ATAT/ATST
-make obd-logger  # firmware compacto + tela de status/dados
+make obd-logger  # firmware live + replay, tela de status/dados
 
 make display     # exemplo de LCD
 make ble         # exemplo de scan BLE
@@ -148,11 +150,14 @@ go run ./cmd/obd-logger --replay=testdata/obd-logger-sample-compact.txt --out=da
 
 ### Páginas
 
-| Página | Dados (máx. 3) | Fonte |
+| Página | Dados | Fonte |
 |---|---|---|
-| 1 | velocidade, RPM, combustível em litros | `010D`, `010C`, `012F` |
-| 2 | ECT, IAT, catalisador | `0105`, `010F`, `013C` |
-| 3 | % álcool, % gasolina, tipo | `0152`, derivado, `0151` |
+| 1 | SERIAL, BLE, ELM, PID/s, TX, ERR | estado interno |
+| 2 | velocidade, RPM, combustível | `010D`, `010C`, `012F` |
+| 3 | água, ar admitido, catalisador | `0105`, `010F`, `013C` |
+| 4 | carga, borboleta, lambda | `0104`, `0111`, `0144` |
+| 5 | tensão, MIL, DTCs | `0142`, `0101`, Mode `03` |
+| 6 | distância, combustível usado, consumo | derivado de `010D`/`012F` |
 
 - **A** = próxima página; **B** = anterior.
 - Litros: `raw_2F / 255 * capacidade`. O padrão é **44,0 L**
@@ -182,6 +187,18 @@ Respostas CAN são preenchidas com `AA`; o parser ignora o padding.
 
 Mais detalhes em **[docs/OBD2-DATA-CATALOG.md](docs/OBD2-DATA-CATALOG.md)**.
 
+### Reconexão e diagnóstico
+
+- se o BLE cair, o firmware emite `X,<ms>,ble_lost` e reconecta com backoff de
+  1/2/5/10 s, com um beep de 120 ms por segundo de espera;
+- no Ctrl-C, o loader envia `C,STOP` e o firmware emite `X,<ms>,host` e pausa
+  o BLE;
+- MIL, DTCs (armazenados/pendentes/permanentes) e readiness são emitidos como
+  eventos `E` e resumidos em `metadata.json`;
+- o `ms` é monotônico desde o boot, então reconectar não reinicia a sessão.
+
+Detalhes em **[docs/P1-ROBUSTNESS.md](docs/P1-ROBUSTNESS.md)**.
+
 ## Exemplos mantidos
 
 | Exemplo | Para que serve |
@@ -204,7 +221,7 @@ Mais detalhes em **[docs/OBD2-DATA-CATALOG.md](docs/OBD2-DATA-CATALOG.md)**.
 | obd-bench | 300 KB | 19,3 KB |
 | obd-tune | 295 KB | 19,3 KB |
 | obd-display | 292 KB | 72,8 KB (16,2 KB de framebuffer) |
-| obd-logger | 304 KB | 50,9 KB (16,2 KB de framebuffer) |
+| obd-logger | 301 KB | 57,7 KB (16,2 KB de framebuffer) |
 
 ## Ambiente
 

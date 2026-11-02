@@ -19,6 +19,7 @@ raw.log → cmd/obd-replay → serial 115200 → M5Stick REPLAY → cache → UI
 | `C,REPLAY` | entra em replay e pausa BLE |
 | `C,LIVE` | sai do replay e retoma BLE |
 | `C,CLEAR` | limpa o cache |
+| `C,STOP` | emite `X,<ms>,host` e pausa o BLE |
 | `R,<registro>` | injeta um registro compacto |
 
 ## Handshake

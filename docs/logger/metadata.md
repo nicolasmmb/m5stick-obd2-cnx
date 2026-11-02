@@ -18,7 +18,14 @@ Resumo da sessão.
   "samples": 1234,
   "events": 2,
   "invalid_lines": 0,
-  "duration_ms": 600000
+  "duration_ms": 600000,
+  "end_reason": "host",
+  "mil": false,
+  "dtc_count": 0,
+  "readiness": "07E100",
+  "dtcs": ["P0133"],
+  "pending_dtcs": ["P0300"],
+  "permanent_dtcs": ["P0420"]
 }
 ```
 
@@ -38,6 +45,13 @@ Resumo da sessão.
 | `events` | eventos |
 | `invalid_lines` | linhas rejeitadas |
 | `duration_ms` | duração pelo tempo do dispositivo |
+| `end_reason` | último `X`: `host`, `ble_lost`, `replay` ou `error` |
+| `mil` | MIL ligada/desligada (`0101`) |
+| `dtc_count` | DTCs confirmados (`0101`) |
+| `readiness` | bytes B/C/D de `0101` em hex |
+| `dtcs` | códigos armazenados (Mode `03`), sem repetição |
+| `pending_dtcs` | códigos pendentes (Mode `07`) |
+| `permanent_dtcs` | códigos permanentes (Mode `0A`) |
 
 ## Uso
 

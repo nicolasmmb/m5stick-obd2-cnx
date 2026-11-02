@@ -1,6 +1,6 @@
 # Otimização do firmware — plano e o que foi feito
 
-> Branch: `feat/obd-replay`
+> Branch: `feat/obd-replay` (mergeada na `main` em `d0da8ad`)
 > Escopo: M5StickC Plus2 + ELM327 BLE + replay serial.
 > Este documento registra o plano de otimização, o que foi implementado, as
 > medições antes/depois e o que ficou pendente ou fora de escopo.
@@ -128,10 +128,13 @@ MD5 8585138a1b7afa7c47b2ff1ded051bc5
 
 ## 6. Pendente de validação
 
-- confirmar visualmente os ~60 fps, botões, cores e páginas 3–6;
-- testar `--speed 20` e `--speed 0` (rajada máxima);
-- replay de 5–10 min sem debug para confirmar estabilidade do heap;
-- rodar uma sessão real no carro.
+- ~~confirmar visualmente os ~60 fps, botões, cores e páginas 3–6~~ ✅;
+- ~~testar `--speed 20` e `--speed 0` (rajada máxima)~~ ✅;
+- ~~replay de 5–10 min sem debug para confirmar estabilidade do heap~~ ✅;
+- rodar uma sessão real de 5–10 min no carro. ⏳
+
+O P1 (reconexão BLE, `X`/`C,STOP`, DTCs/readiness) está em
+[P1-ROBUSTNESS.md](P1-ROBUSTNESS.md).
 
 ## 7. Fora do escopo desta otimização
 

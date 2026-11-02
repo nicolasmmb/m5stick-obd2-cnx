@@ -12,7 +12,7 @@ Exemplo:
 I,0,0.1,9BGEA48A0LG185881,440
 ```
 
-- `ms` = milissegundos desde o início.
+- `ms` = milissegundos desde o boot, monotônico (não reinicia na reconexão).
 - `fw` = versão do firmware.
 - `vin` = VIN de 17 caracteres (pode ser vazio).
 - `tank_dl` = capacidade do tanque em decilitros.
@@ -43,6 +43,13 @@ Exemplos:
 ```text
 E,5000,NO_DATA,0C
 E,6000,PARSE_ERROR,0D
+E,6100,MIL,ON
+E,6101,DTC_COUNT,2
+E,6102,READINESS,07E100
+E,6103,DTC,P0133
+E,6104,DTC_PENDING,P0300
+E,6105,DTC_PERMANENT,P0420
+E,7000,RECONNECT,ble_lost
 ```
 
 ## X — fim
@@ -51,10 +58,23 @@ E,6000,PARSE_ERROR,0D
 X,<ms>,<motivo>
 ```
 
-Exemplo:
+Exemplos:
 
 ```text
-X,600000,user
+X,600000,host
+X,600100,ble_lost
+X,600200,replay
+```
+
+## Comandos host → Stick
+
+```text
+A                 ACK de presença do host
+C,REPLAY          entra em replay
+C,LIVE            volta ao modo live
+C,CLEAR           limpa o cache
+C,STOP            encerra o live, emite X,host e pausa o BLE
+R,<registro>      injeta um registro no replay
 ```
 
 ## Regras

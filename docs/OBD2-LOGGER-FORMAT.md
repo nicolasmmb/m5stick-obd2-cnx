@@ -54,6 +54,22 @@ E,<ms>,<tipo>,<detalhe>
 E,5000,NO_DATA,0C
 ```
 
+Eventos de diagnóstico emitidos a cada conexão/reconexão:
+
+```text
+E,120,MIL,OFF
+E,121,DTC_COUNT,0
+E,122,READINESS,07E100
+E,123,DTC,P0133
+E,124,DTC_PENDING,P0300
+E,125,DTC_PERMANENT,P0420
+```
+
+- `READINESS` traz os bytes B/C/D de `0101` em hex (6 caracteres).
+- `DTC`/`DTC_PENDING`/`DTC_PERMANENT` vêm dos modos `03`/`07`/`0A`; o
+  primeiro byte da resposta é a contagem, não um código.
+- `RECONNECT` aparece quando o link BLE cai e o firmware volta a escanear.
+
 ### X — fim
 
 ```text
@@ -61,8 +77,29 @@ X,<ms>,<motivo>
 ```
 
 ```text
-X,600000,user
+X,600000,host
 ```
+
+| Motivo | Quando |
+|---|---|
+| `ble_lost` | escrita BLE falhou ou 3 timeouts consecutivos |
+| `replay` | host pediu `C,REPLAY` |
+| `host` | host pediu `C,STOP` (Ctrl-C do loader) |
+| `error` | outra falha depois do início da sessão |
+
+Um `X` é emitido antes de cada reconexão e antes de trocar de modo. O `ms` é
+monotônico desde o boot: reconectar **não** reinicia a linha do tempo.
+
+### Comandos host → Stick
+
+| Linha | Efeito |
+|---|---|
+| `A` | ACK de presença do host |
+| `C,REPLAY` | entra em replay e pausa o BLE |
+| `C,LIVE` | sai do replay/pausa e retoma o BLE |
+| `C,CLEAR` | limpa o cache |
+| `C,STOP` | emite `X,host` e pausa o BLE |
+| `R,<registro>` | injeta um registro no modo replay |
 
 ## Qualidade
 

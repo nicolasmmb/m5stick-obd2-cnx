@@ -141,7 +141,7 @@ O lambda tem uma marca branca no centro (λ=1,00).
 |---|---|
 | Tensão do módulo | `0142` |
 | MIL/check engine | `0101` bit 7 |
-| DTCs armazenados | Mode `03` |
+| DTCs confirmados | `0101` bits 6–0 (fallback: Mode `03`) |
 
 Cores:
 
