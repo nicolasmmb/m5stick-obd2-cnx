@@ -82,6 +82,13 @@ func main() {
 
 	initDisplay()
 	initButtons()
+	latestFuel = -1
+	latestCoolant = -1
+	latestIntake = -1
+	latestCat = -1
+	latestLoad = -1
+	latestThrottle = -1
+	latestLambda = -1
 	bootTime = time.Now()
 	started = bootTime
 	go serialAckLoop()
@@ -248,6 +255,12 @@ func setLatest(pid string, v float64) {
 		latestIntake = int(v)
 	case "3C":
 		latestCat = int(v)
+	case "04":
+		latestLoad = v
+	case "11":
+		latestThrottle = v
+	case "44":
+		latestLambda = v
 	}
 }
 

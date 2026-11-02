@@ -21,7 +21,7 @@ const (
 	inset     = 1
 	gap       = 2
 	contentH  = screenH - inset*2 - 3
-	pageCount = 3
+	pageCount = 4
 )
 
 var (
@@ -65,13 +65,16 @@ var (
 	samples       int
 	started       time.Time
 
-	latestSpeed   int
-	latestRPM     int
-	latestFuel    float64
-	latestCoolant int
-	latestIntake  int
-	latestCat     int
-	lastDraw      time.Time
+	latestSpeed    int
+	latestRPM      int
+	latestFuel     float64
+	latestCoolant  int
+	latestIntake   int
+	latestCat      int
+	latestLoad     float64
+	latestThrottle float64
+	latestLambda   float64
+	lastDraw       time.Time
 )
 
 const (
@@ -288,6 +291,8 @@ func drawPage() {
 		drawDataPage()
 	case 2:
 		drawTemperaturePage()
+	case 3:
+		drawEnginePage()
 	}
 	drawPageDots()
 	flushRows(0, screenH-1)
@@ -405,6 +410,105 @@ func tempColor(v, warn, hot int) color.RGBA {
 		return red
 	}
 	if v >= warn {
+		return amber
+	}
+	return green
+}
+
+func drawEnginePage() {
+	in := innerRect()
+	topH := int16(65)
+	topW := (in.w - gap) / 2
+	bottomY := in.y + topH + gap
+	bottomH := in.h - topH - gap
+
+	loadC := loadColor(latestLoad)
+	thrC := throttleColor(latestThrottle)
+	drawPercentTile(rect{in.x, in.y, topW, topH}, iconGauge, "CARGA", latestLoad, loadC)
+	drawPercentTile(rect{in.x + topW + gap, in.y, topW, topH}, iconRate, "BORBOLETA", latestThrottle, thrC)
+	drawLambdaTile(rect{in.x, bottomY, in.w, bottomH})
+}
+
+func drawPercentTile(r rect, icon int, label string, v float64, c color.RGBA) {
+	fillRect(r.x, r.y, r.w, r.h, panel)
+	fillRect(r.x, r.y, r.w, 2, c)
+	drawIcon(icon, r.x+8, r.y+9, c)
+	text(&proggy.TinySZ8pt7b, r.x+24, r.y+16, label, gray)
+	val := "--"
+	pct := 0
+	if v >= 0 {
+		pct = int(v)
+		val = strconv.Itoa(pct)
+	}
+	drawFitCentered(r, r.y+43, val, c)
+	textCentered(&proggy.TinySZ8pt7b, r, r.y+57, "%", gray)
+	fillRect(r.x+12, r.y+59, r.w-24, 4, gray)
+	if pct > 0 {
+		fillRect(r.x+12, r.y+59, int16(int(r.w-24)*pct/100), 4, c)
+	}
+}
+
+func drawLambdaTile(r rect) {
+	c := lambdaColor(latestLambda)
+	fillRect(r.x, r.y, r.w, r.h, panel)
+	fillRect(r.x, r.y, r.w, 2, c)
+	drawIcon(iconAir, r.x+8, r.y+9, c)
+	text(&proggy.TinySZ8pt7b, r.x+24, r.y+16, "LAMBDA", gray)
+	val := "--"
+	if latestLambda >= 0 {
+		val = strconv.FormatFloat(latestLambda, 'f', 2, 64)
+	}
+	text(&freemono.Bold18pt7b, r.x+70, r.y+42, val, c)
+	text(&proggy.TinySZ8pt7b, r.x+190, r.y+42, "lambda", gray)
+	fillRect(r.x+12, r.y+50, r.w-24, 6, gray)
+	if latestLambda > 0 {
+		pct := int((latestLambda - 0.7) * 100 / 0.6)
+		if pct < 0 {
+			pct = 0
+		}
+		if pct > 100 {
+			pct = 100
+		}
+		fillRect(r.x+12, r.y+50, int16(int(r.w-24)*pct/100), 6, c)
+		markerX := r.x + 12 + int16(int(r.w-24)*50/100)
+		fillRect(markerX, r.y+48, 1, 10, white)
+	}
+}
+
+func loadColor(v float64) color.RGBA {
+	if v < 0 {
+		return gray
+	}
+	if v >= 85 {
+		return red
+	}
+	if v >= 60 {
+		return amber
+	}
+	return green
+}
+
+func throttleColor(v float64) color.RGBA {
+	if v < 0 {
+		return gray
+	}
+	if v >= 80 {
+		return red
+	}
+	if v >= 50 {
+		return amber
+	}
+	return green
+}
+
+func lambdaColor(v float64) color.RGBA {
+	if v < 0 {
+		return gray
+	}
+	if v < 0.9 || v > 1.1 {
+		return red
+	}
+	if v < 0.95 || v > 1.05 {
 		return amber
 	}
 	return green

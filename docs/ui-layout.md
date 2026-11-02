@@ -103,6 +103,28 @@ Cada tile tem:
 - valor em °C;
 - barra de faixa na base.
 
+## Página 4 — MOTOR
+
+Layout assimétrico:
+
+```text
+┌──────────────────┬──────────────────┐
+│      CARGA       │    BORBOLETA     │
+│       31%        │       22%        │
+├──────────────────┴──────────────────┤
+│              LAMBDA                 │
+│               0.85                  │
+└──────────────────────────────────────┘
+```
+
+| Dado | PID | Faixas |
+|---|---|---|
+| Carga do motor | `0104` | verde <60%, amarelo 60–85%, vermelho >85% |
+| Borboleta | `0111` | verde <50%, amarelo 50–80%, vermelho >80% |
+| Lambda | `0144` | verde 0,95–1,05; amarelo 0,90–1,10; vermelho fora |
+
+O lambda tem uma marca branca no centro (λ=1,00).
+
 ## Tipografia
 
 - valores grandes: `Bold18`;

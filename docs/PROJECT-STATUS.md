@@ -67,6 +67,7 @@ X,<ms>,<motivo>
 - página 1: SERIAL, BLE, ELM, PID/s, TX, ERR;
 - página 2: velocidade, RPM e combustível;
 - página 3: água, ar admitido e catalisador;
+- página 4: carga, borboleta e lambda;
 - botões A/B (interrupt + polling fallback);
 - ACK serial do host para o estado `SERIAL`.
 
@@ -127,6 +128,7 @@ data/<sessão>/
 | SERIAL WAIT/OK/DISC | ⏳ pendente de confirmação |
 | Cores após `IsBGR(false)` | ⏳ pendente de confirmação |
 | Página 3 (temperaturas) | ⏳ pendente de confirmação visual |
+| Página 4 (motor) | ⏳ pendente de confirmação visual |
 | Log real de 5–10 min | ⏳ pendente |
 
 ## 5. Decisões tomadas
