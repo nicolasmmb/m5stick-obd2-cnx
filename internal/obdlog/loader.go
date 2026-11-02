@@ -36,6 +36,13 @@ type Metadata struct {
 	InvalidLines    int    `json:"invalid_lines"`
 	EndReason       string `json:"end_reason,omitempty"`
 	DurationMs      int64  `json:"duration_ms"`
+
+	MIL           *bool    `json:"mil,omitempty"`
+	DTCCount      *int     `json:"dtc_count,omitempty"`
+	Readiness     string   `json:"readiness,omitempty"`
+	DTCs          []string `json:"dtcs,omitempty"`
+	PendingDTCs   []string `json:"pending_dtcs,omitempty"`
+	PermanentDTCs []string `json:"permanent_dtcs,omitempty"`
 }
 
 type field struct {
@@ -247,6 +254,7 @@ func (l *Loader) ProcessLine(line []byte, received time.Time) error {
 			return err
 		}
 		l.meta.Events++
+		l.applyEvent(*rec.Event)
 	case "X":
 		l.meta.EndReason = rec.End.Reason
 		l.lastMs = rec.End.Ms
@@ -259,6 +267,42 @@ func (l *Loader) ProcessLine(line []byte, received time.Time) error {
 		l.wide.Flush()
 	}
 	return nil
+}
+
+// applyEvent folds the diagnostic events into the session summary. The raw
+// event is still written to events.jsonl.
+func (l *Loader) applyEvent(e Event) {
+	msg := strings.TrimSpace(e.Msg)
+	switch e.Type {
+	case "MIL":
+		v := strings.EqualFold(msg, "ON") || msg == "1"
+		l.meta.MIL = &v
+	case "DTC_COUNT":
+		if n, err := strconv.Atoi(msg); err == nil {
+			l.meta.DTCCount = &n
+		}
+	case "READINESS":
+		l.meta.Readiness = strings.ToUpper(msg)
+	case "DTC":
+		l.meta.DTCs = appendDTC(l.meta.DTCs, msg)
+	case "DTC_PENDING":
+		l.meta.PendingDTCs = appendDTC(l.meta.PendingDTCs, msg)
+	case "DTC_PERMANENT":
+		l.meta.PermanentDTCs = appendDTC(l.meta.PermanentDTCs, msg)
+	}
+}
+
+func appendDTC(list []string, code string) []string {
+	code = strings.ToUpper(strings.TrimSpace(code))
+	if code == "" {
+		return list
+	}
+	for _, c := range list {
+		if c == code {
+			return list
+		}
+	}
+	return append(list, code)
 }
 
 func (l *Loader) writeDecoded(rec Record) error {

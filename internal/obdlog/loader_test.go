@@ -136,6 +136,63 @@ func TestLoaderReplayCompact(t *testing.T) {
 	}
 }
 
+func TestLoaderDiagnosticsMetadata(t *testing.T) {
+	l, err := NewLoader(Options{OutDir: t.TempDir(), SessionID: "diag"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := []string{
+		"I,0,0.1,9BGEA48A0LG185881,440",
+		"E,10,MIL,ON",
+		"E,11,DTC_COUNT,2",
+		"E,12,READINESS,07E100",
+		"E,13,DTC,P0133",
+		"E,14,DTC,U0123",
+		"E,15,DTC,P0133",
+		"E,16,DTC_PENDING,P0300",
+		"E,17,DTC_PERMANENT,P0420",
+		"X,20,host",
+	}
+	for _, line := range lines {
+		if err := l.ProcessLine([]byte(line), time.Now()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := l.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	metaBytes, err := os.ReadFile(filepath.Join(l.Dir(), "metadata.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var meta Metadata
+	if err := json.Unmarshal(metaBytes, &meta); err != nil {
+		t.Fatal(err)
+	}
+	if meta.MIL == nil || !*meta.MIL {
+		t.Fatalf("mil = %v, want true", meta.MIL)
+	}
+	if meta.DTCCount == nil || *meta.DTCCount != 2 {
+		t.Fatalf("dtc_count = %v, want 2", meta.DTCCount)
+	}
+	if meta.Readiness != "07E100" {
+		t.Fatalf("readiness = %q", meta.Readiness)
+	}
+	if len(meta.DTCs) != 2 || meta.DTCs[0] != "P0133" || meta.DTCs[1] != "U0123" {
+		t.Fatalf("dtcs = %v", meta.DTCs)
+	}
+	if len(meta.PendingDTCs) != 1 || meta.PendingDTCs[0] != "P0300" {
+		t.Fatalf("pending = %v", meta.PendingDTCs)
+	}
+	if len(meta.PermanentDTCs) != 1 || meta.PermanentDTCs[0] != "P0420" {
+		t.Fatalf("permanent = %v", meta.PermanentDTCs)
+	}
+	if meta.EndReason != "host" {
+		t.Fatalf("end_reason = %q", meta.EndReason)
+	}
+}
+
 func splitLines(b []byte) []string {
 	var out []string
 	start := 0
