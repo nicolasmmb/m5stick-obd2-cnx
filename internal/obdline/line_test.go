@@ -15,6 +15,7 @@ func TestParse(t *testing.T) {
 		{"C,LIVE", KindLive, "", nil, 0},
 		{"C,CLEAR", KindClear, "", nil, 0},
 		{"C,STOP\r", KindStop, "", nil, 0},
+		{"C,SIM", KindSim, "", nil, 0},
 		{"R,P,16199,0c,0cfe,161,OK", KindRecord, "0C", []byte{0x0c, 0xfe}, 16199},
 		{"R,P,1,0D,00,140,OK", KindRecord, "0D", []byte{0x00}, 1},
 		{"R,P,2,44,8000AAAAAA,180,OK", KindRecord, "44", []byte{0x80, 0x00, 0xAA, 0xAA, 0xAA}, 2},

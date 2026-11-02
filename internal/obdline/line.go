@@ -19,6 +19,7 @@ const (
 	KindLive
 	KindClear
 	KindStop
+	KindSim
 	KindRecord
 )
 
@@ -53,6 +54,8 @@ func Parse(line []byte) (Line, bool) {
 		return Line{Kind: KindClear}, true
 	case equal(line, "C,STOP"):
 		return Line{Kind: KindStop}, true
+	case equal(line, "C,SIM"):
+		return Line{Kind: KindSim}, true
 	}
 	if len(line) >= 2 && line[0] == 'R' && line[1] == ',' {
 		rec, ok := parseRecord(line[2:])
