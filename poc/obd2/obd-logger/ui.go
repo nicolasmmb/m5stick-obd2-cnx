@@ -1,3 +1,5 @@
+//go:build tinygo
+
 package main
 
 import (
@@ -1049,13 +1051,6 @@ func statusColor(ok bool) color.RGBA {
 		return green
 	}
 	return red
-}
-
-func onOff(v bool) string {
-	if v {
-		return "ON"
-	}
-	return "OFF"
 }
 
 func yesNo(v bool) string {
