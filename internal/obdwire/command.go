@@ -94,14 +94,20 @@ func ParseRecord(line string) (Record, error) {
 		if len(parts) < 4 {
 			return Record{}, fmt.Errorf("invalid E record")
 		}
-		ms, _ := strconv.ParseInt(parts[1], 10, 64)
+		ms, err := strconv.ParseInt(parts[1], 10, 64)
+		if err != nil {
+			return Record{}, fmt.Errorf("invalid E ms")
+		}
 		return Record{Type: RecordEvent, Ms: ms, Payload: line}, nil
 	case 'X':
 		parts := strings.SplitN(line, ",", 3)
 		if len(parts) < 2 {
 			return Record{}, fmt.Errorf("invalid X record")
 		}
-		ms, _ := strconv.ParseInt(parts[1], 10, 64)
+		ms, err := strconv.ParseInt(parts[1], 10, 64)
+		if err != nil {
+			return Record{}, fmt.Errorf("invalid X ms")
+		}
 		return Record{Type: RecordEnd, Ms: ms, Payload: line}, nil
 	}
 	return Record{}, fmt.Errorf("unknown record %q", line[0])

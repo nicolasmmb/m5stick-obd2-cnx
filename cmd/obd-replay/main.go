@@ -68,12 +68,19 @@ func (s *source) Next() (obdwire.Record, time.Duration, error) {
 		if err != nil {
 			continue
 		}
+		// Events and X are not rendered by the Stick and their timestamps in
+		// old logs can be unreliable. Replay only I/P records.
+		if rec.Type == obdwire.RecordEvent || rec.Type == obdwire.RecordEnd {
+			continue
+		}
 		var wait time.Duration
 		if !s.first && rec.Ms > s.lastMs {
 			wait = time.Duration(rec.Ms-s.lastMs) * time.Millisecond
 		}
 		s.first = false
-		s.lastMs = rec.Ms
+		if rec.Ms > s.lastMs {
+			s.lastMs = rec.Ms
+		}
 		return rec, wait, nil
 	}
 	if err := s.scan.Err(); err != nil {
@@ -150,13 +157,38 @@ func (s *serialSink) write(line string) error {
 	return err
 }
 
-func (s *serialSink) EnterReplay() error { return s.write("C,REPLAY") }
-func (s *serialSink) Ack() error         { return s.write("A") }
-func (s *serialSink) Send(r obdwire.Record) error {
-	return s.write("R," + obdwire.FormatRecord(r))
+func (s *serialSink) EnterReplay() error {
+	log.Println("C,REPLAY")
+	return s.write("C,REPLAY")
 }
-func (s *serialSink) ExitReplay() error { return s.write("C,LIVE") }
-func (s *serialSink) Close() error      { return s.port.Close() }
+func (s *serialSink) Ack() error { return s.write("A") }
+func (s *serialSink) Send(r obdwire.Record) error {
+	line := "R," + obdwire.FormatRecord(r)
+	log.Println(line)
+	return s.write(line)
+}
+func (s *serialSink) ExitReplay() error {
+	log.Println("C,LIVE")
+	if err := s.write("C,LIVE"); err != nil {
+		return err
+	}
+	return s.port.Drain()
+}
+func (s *serialSink) Close() error { return s.port.Close() }
+
+func (s *serialSink) echo() {
+	_ = s.port.SetReadTimeout(200 * time.Millisecond)
+	buf := make([]byte, 512)
+	for {
+		n, err := s.port.Read(buf)
+		if n > 0 {
+			_, _ = os.Stdout.Write(buf[:n])
+		}
+		if err != nil {
+			return
+		}
+	}
+}
 
 func main() {
 	var (
@@ -168,6 +200,7 @@ func main() {
 		endMs    = flag.Int64("end", -1, "stop at device ms")
 		dryRun   = flag.Bool("dry-run", false, "do not open serial")
 		verbose  = flag.Bool("verbose", false, "print every record")
+		echo     = flag.Bool("echo", false, "echo firmware serial output")
 	)
 	flag.Parse()
 	if *file == "" {
@@ -195,6 +228,9 @@ func main() {
 			log.Fatal(err)
 		}
 		out = s
+		if *echo {
+			go s.echo()
+		}
 	}
 	defer out.Close()
 	defer out.ExitReplay()
@@ -243,7 +279,7 @@ func main() {
 			log.Fatal(err)
 		}
 		if *verbose {
-			log.Printf("sent R,%s", obdwire.FormatRecord(rec))
+			log.Printf("  ms=%d wait=%s", rec.Ms, wait)
 		}
 	}
 }

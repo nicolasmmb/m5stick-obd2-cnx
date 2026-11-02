@@ -65,12 +65,18 @@ func (s *SerialLink) Poll() {
 		case obdwire.KindAck:
 			atomic.StoreInt64(&serialAckNano, time.Now().UnixNano())
 		case obdwire.KindReplay:
+			adapter.StopScan()
 			appMode = ModeReplay
+			resetReplayValues()
 			uiPaused = false
+			page = 1
+			dirtyAll = true
 			bleState = bleOff
 			elmState = elmWait
 		case obdwire.KindLive:
+			adapter.StopScan()
 			appMode = ModeLive
+			dirtyAll = true
 		case obdwire.KindClear:
 			resetReplayValues()
 		case obdwire.KindRecord:

@@ -14,7 +14,6 @@ import (
 	"tinygo.org/x/tinyfont/proggy"
 
 	"m5stick-obd2-cnx/internal/obdpid"
-	"m5stick-obd2-cnx/internal/obdstore"
 )
 
 const (
@@ -72,9 +71,14 @@ var (
 	tripKm        float64
 	tripFuelStart float64
 	tripLast      time.Time
-	lastDraw      time.Time
 	uiPaused      bool
-	view          obdstore.Snapshot
+
+	dirtyTiles    uint16
+	dirtyAll      bool
+	heartOn       bool
+	lastHeartbeat time.Time
+	lastStatusUI  time.Time
+	lastCompose   time.Time
 )
 
 const (
@@ -179,7 +183,14 @@ func initButtons() {
 }
 
 func reading(pid string) (obdpid.Reading, bool) {
-	return view.Get(pid)
+	r, ok := readingStore.Get(pid)
+	if !ok {
+		return obdpid.Reading{}, false
+	}
+	if r.Quality == obdpid.QualityOK && r.AgeMs(time.Now()) > 3000 {
+		r.Quality = obdpid.QualityStale
+	}
+	return r, true
 }
 
 func readingNumber(pid string) (float64, bool) {
@@ -276,20 +287,169 @@ func uiLoop() {
 	for {
 		serialLink.Poll()
 		if uiPaused {
-			time.Sleep(100 * time.Millisecond)
+			time.Sleep(16 * time.Millisecond)
 			continue
 		}
 		if handleButtons() {
-			drawPage()
-		} else if time.Since(lastDraw) > 500*time.Millisecond {
-			drawPage()
+			dirtyAll = true
 		}
-		time.Sleep(50 * time.Millisecond)
+
+		now := time.Now()
+		if now.Sub(lastStatusUI) >= 500*time.Millisecond {
+			lastStatusUI = now
+			if page == 0 {
+				markAllStatus()
+			}
+		}
+		if now.Sub(lastHeartbeat) >= 500*time.Millisecond {
+			lastHeartbeat = now
+			heartOn = !heartOn
+			drawHeartbeat()
+			hr := heartRect()
+			flushRect(hr.x, hr.y, hr.w, hr.h)
+		}
+
+		if dirtyAll {
+			composePage()
+			drawHeartbeat()
+			flushRect(0, 0, screenW, screenH)
+			lastCompose = now
+			dirtyAll = false
+			dirtyTiles = 0
+		} else if dirtyTiles != 0 && now.Sub(lastCompose) >= 100*time.Millisecond {
+			composePage()
+			drawHeartbeat()
+			flushDirtyTiles()
+			lastCompose = now
+			dirtyTiles = 0
+		}
+		time.Sleep(16 * time.Millisecond)
 	}
 }
 
-func drawPage() {
-	view = viewSnapshot()
+func markTile(p, index int) {
+	if page == p && index >= 0 && index < 16 {
+		dirtyTiles |= 1 << uint(index)
+	}
+}
+
+func markAllStatus() {
+	for i := 0; i < 6; i++ {
+		markTile(0, i)
+	}
+}
+
+func markPIDDirty(pid string) {
+	switch page {
+	case 1:
+		switch pid {
+		case "0D":
+			markTile(1, 0)
+		case "0C":
+			markTile(1, 1)
+		case "2F":
+			markTile(1, 2)
+		}
+	case 2:
+		switch pid {
+		case "05":
+			markTile(2, 0)
+		case "0F":
+			markTile(2, 1)
+		case "3C":
+			markTile(2, 2)
+		}
+	case 3:
+		switch pid {
+		case "04":
+			markTile(3, 0)
+		case "11":
+			markTile(3, 1)
+		case "44":
+			markTile(3, 2)
+		}
+	case 4:
+		if pid == "42" {
+			markTile(4, 0)
+		}
+	case 5:
+		if pid == "0D" || pid == "2F" {
+			markTile(5, 0)
+			markTile(5, 1)
+			markTile(5, 2)
+		}
+	}
+}
+
+func heartRect() rect {
+	return rect{screenW - 8, screenH - 6, 5, 4}
+}
+
+func drawHeartbeat() {
+	r := heartRect()
+	fillRect(r.x, r.y, r.w, r.h, black)
+	c := gray
+	if heartOn {
+		c = green
+	}
+	fillRect(r.x, r.y, r.w, r.h, c)
+}
+
+func tileRectFor(p, index int) (rect, bool) {
+	in := innerRect()
+	if p == 0 {
+		rowH := (in.h - gap) / 2
+		colW := (in.w - 2*gap) / 3
+		w3 := in.w - 2*colW - 2*gap
+		if w3 < colW {
+			colW--
+			w3 = in.w - 2*colW - 2*gap
+		}
+		h2 := in.h - rowH - gap
+		switch index {
+		case 0:
+			return rect{in.x, in.y, colW, rowH}, true
+		case 1:
+			return rect{in.x + colW + gap, in.y, colW, rowH}, true
+		case 2:
+			return rect{in.x + 2*(colW+gap), in.y, w3, rowH}, true
+		case 3:
+			return rect{in.x, in.y + rowH + gap, colW, h2}, true
+		case 4:
+			return rect{in.x + colW + gap, in.y + rowH + gap, colW, h2}, true
+		case 5:
+			return rect{in.x + 2*(colW+gap), in.y + rowH + gap, w3, h2}, true
+		}
+		return rect{}, false
+	}
+
+	topH := int16(65)
+	topW := (in.w - gap) / 2
+	bottomY := in.y + topH + gap
+	bottomH := in.h - topH - gap
+	switch index {
+	case 0:
+		return rect{in.x, in.y, topW, topH}, true
+	case 1:
+		return rect{in.x + topW + gap, in.y, topW, topH}, true
+	case 2:
+		return rect{in.x, bottomY, in.w, bottomH}, true
+	}
+	return rect{}, false
+}
+
+func flushDirtyTiles() {
+	for i := 0; i < 16; i++ {
+		if dirtyTiles&(1<<uint(i)) == 0 {
+			continue
+		}
+		if r, ok := tileRectFor(page, i); ok {
+			flushRect(r.x, r.y, r.w, r.h)
+		}
+	}
+}
+
+func composePage() {
 	fillRect(0, 0, screenW, screenH, black)
 	switch page {
 	case 0:
@@ -306,8 +466,6 @@ func drawPage() {
 		drawTripPage()
 	}
 	drawPageDots()
-	flushRows(0, screenH-1)
-	lastDraw = time.Now()
 }
 
 func innerRect() rect {
@@ -962,6 +1120,42 @@ func fillRect(x, y, w, h int16, c color.RGBA) {
 				fb[b] = fb[b]&0xF0 | idx
 			}
 		}
+	}
+}
+
+func flushRect(x, y, w, h int16) {
+	if x < 0 {
+		w += x
+		x = 0
+	}
+	if y < 0 {
+		h += y
+		y = 0
+	}
+	if x+w > screenW {
+		w = screenW - x
+	}
+	if y+h > screenH {
+		h = screenH - y
+	}
+	if w <= 0 || h <= 0 {
+		return
+	}
+	for by := int16(0); by < h; by += bandRows {
+		bh := h - by
+		if bh > bandRows {
+			bh = bandRows
+		}
+		for r := int16(0); r < bh; r++ {
+			for xx := int16(0); xx < w; xx++ {
+				c := palette[getPixel(int(x+xx), int(y+by+r))]
+				v := rgb565(c)
+				off := (int(r)*int(w) + int(xx)) * 2
+				lineBuf[off] = byte(v >> 8)
+				lineBuf[off+1] = byte(v)
+			}
+		}
+		display.DrawRGBBitmap8(x, y+by, lineBuf[:int(bh*w)*2], w, bh)
 	}
 }
 

@@ -91,6 +91,7 @@ func main() {
 	tripLast = time.Now()
 	bootTime = time.Now()
 	started = bootTime
+	dirtyAll = true
 	go uiLoop()
 
 	time.Sleep(time.Second)
@@ -111,6 +112,7 @@ func main() {
 		}
 		err := runSession()
 		uiPaused = false
+		adapter.StopScan()
 		if err != nil && err != errReplay {
 			println("obd-logger:", err.Error())
 		}
@@ -127,18 +129,13 @@ func main() {
 	}
 }
 
-func debugStep(s string) {
-	ms := int64(0)
-	if !started.IsZero() {
-		ms = int64(time.Since(started) / time.Millisecond)
-	}
-	println("E," + strconv.FormatInt(ms, 10) + ",DEBUG," + s)
-}
-
 func runSession() error {
 	if appMode == ModeReplay {
 		return errReplay
 	}
+	// A previous scan can still be active after replay or an error.
+	adapter.StopScan()
+	time.Sleep(150 * time.Millisecond)
 	bleState = bleScan
 	elmState = elmWait
 	var addr bluetooth.Address
@@ -171,18 +168,16 @@ func runSession() error {
 	}
 	<-done
 	if appMode == ModeReplay {
+		adapter.StopScan()
 		return errReplay
 	}
 	if !found {
-		debugStep("no_device")
 		return &simpleError{"no OBDII BLE device found"}
 	}
-	debugStep("found")
 
 	time.Sleep(150 * time.Millisecond)
 	// Pause the full-screen UI only during Connect, where it could compete
 	// with the BLE controller.
-	debugStep("connecting")
 	uiPaused = true
 	// If Connect blocks longer than expected, let the UI resume so the
 	// display does not stay frozen on LINK forever.
@@ -192,47 +187,38 @@ func runSession() error {
 	}()
 	dev, err := adapter.Connect(addr, bluetooth.ConnectionParams{})
 	if err != nil {
-		debugStep("connect_error")
 		return err
 	}
 	bleState = bleConnected
 	elmState = elmInit
 	uiPaused = false
-	debugStep("connected")
-	debugStep("services")
+	dirtyAll = true
 	services, err := dev.DiscoverServices([]bluetooth.UUID{uuidFFF0})
 	if err != nil {
-		debugStep("services_error")
 		return err
 	}
-	debugStep("chars")
 	chars, err := services[0].DiscoverCharacteristics([]bluetooth.UUID{uuidFFF1, uuidFFF2})
 	if err != nil {
-		debugStep("chars_error")
 		return err
 	}
 	notifyChar := chars[0]
 	writeChar := chars[1]
-	debugStep("notify")
 	if err := notifyChar.EnableNotifications(func(buf []byte) {
 		mu.Lock()
 		rx = append(rx, buf...)
 		mu.Unlock()
 	}); err != nil {
-		debugStep("notify_error")
 		return err
 	}
 	elmState = elmInit
 	e := &elm{write: writeChar}
 	for _, cmd := range []string{"ATZ", "ATE0", "ATL0", "ATS0", "ATSP0"} {
 		if _, err := e.command(cmd, 3*time.Second); err != nil {
-			debugStep("handshake_error_" + cmd)
 			return &simpleError{"handshake " + cmd + ": " + err.Error()}
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
 	elmState = elmOK
-	debugStep("handshake_ok")
 	readDiagnostics(e)
 
 	vin := readVIN(e)
@@ -338,6 +324,8 @@ func readDiagnostics(e *elm) {
 		h = h[4:]
 	}
 	dtcCount = count
+	markTile(4, 1)
+	markTile(4, 2)
 }
 
 func (e *elm) command(cmd string, timeout time.Duration) (string, error) {

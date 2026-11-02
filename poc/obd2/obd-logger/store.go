@@ -17,6 +17,7 @@ func ingest(pid string, raw []byte, source obdpid.Source) bool {
 	}
 	reading.Source = source
 	readingStore.Put(reading)
+	markPIDDirty(pid)
 	samples++
 
 	if pid == "0D" {
@@ -30,8 +31,4 @@ func ingest(pid string, raw []byte, source obdpid.Source) bool {
 		tripFuelStart = reading.Value
 	}
 	return true
-}
-
-func viewSnapshot() obdstore.Snapshot {
-	return obdstore.NewSnapshot(readingStore.Snapshot())
 }
