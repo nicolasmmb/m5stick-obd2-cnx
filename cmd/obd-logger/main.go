@@ -118,6 +118,7 @@ func readPort(ctx context.Context, port serial.Port, loader *obdlog.Loader) erro
 
 	for {
 		if ctx.Err() != nil {
+			stopDevice(port, loader)
 			return nil
 		}
 		// Tell the firmware that a host is listening. The firmware shows
@@ -146,6 +147,37 @@ func readPort(ctx context.Context, port serial.Port, loader *obdlog.Loader) erro
 		}
 		if err != nil {
 			return err
+		}
+	}
+}
+
+// stopDevice asks the firmware to end the live session. The firmware emits
+// X,<ms>,host and parks the BLE until the next C,LIVE, so the board does not
+// keep scanning after the loader exits.
+func stopDevice(port serial.Port, loader *obdlog.Loader) {
+	_, _ = port.Write([]byte("C,STOP\n"))
+	_ = port.SetReadTimeout(100 * time.Millisecond)
+	buf := make([]byte, 512)
+	var pending []byte
+	deadline := time.Now().Add(700 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		n, _ := port.Read(buf)
+		if n <= 0 {
+			time.Sleep(10 * time.Millisecond)
+			continue
+		}
+		pending = append(pending, buf[:n]...)
+		for {
+			i := bytes.IndexByte(pending, '\n')
+			if i < 0 {
+				break
+			}
+			line := pending[:i]
+			pending = pending[i+1:]
+			_ = loader.ProcessLine(line, time.Now())
+			if bytes.HasPrefix(line, []byte("X,")) {
+				return
+			}
 		}
 	}
 }
