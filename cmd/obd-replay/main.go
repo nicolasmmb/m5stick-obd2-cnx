@@ -142,14 +142,28 @@ func (d drySink) Close() error      { return nil }
 
 type serialSink struct {
 	port serial.Port
+	ack  chan struct{}
+	echo bool
 }
 
-func openSerialSink(portName string) (*serialSink, error) {
+func openSerialSink(portName string, echo, reset bool) (*serialSink, error) {
 	p, err := serial.Open(portName, &serial.Mode{BaudRate: 115200})
 	if err != nil {
 		return nil, err
 	}
-	return &serialSink{port: p}, nil
+	if reset {
+		// Normal ESP32 reset: RTS drives EN, DTR must stay high (IO0 high)
+		// so the board boots the application instead of the download mode.
+		_ = p.SetDTR(false)
+		_ = p.SetRTS(true)
+		time.Sleep(150 * time.Millisecond)
+		_ = p.SetRTS(false)
+		time.Sleep(50 * time.Millisecond)
+		_ = p.SetDTR(false)
+	}
+	s := &serialSink{port: p, ack: make(chan struct{}, 1), echo: echo}
+	go s.readLoop()
+	return s, nil
 }
 
 func (s *serialSink) write(line string) error {
@@ -157,9 +171,22 @@ func (s *serialSink) write(line string) error {
 	return err
 }
 
+// EnterReplay keeps sending the command until the firmware confirms it. The
+// first bytes written after opening the port can be lost while the board
+// resets, which used to leave the device in live mode with BLE enabled.
 func (s *serialSink) EnterReplay() error {
-	log.Println("C,REPLAY")
-	return s.write("C,REPLAY")
+	for attempt := 0; attempt < 20; attempt++ {
+		log.Println("C,REPLAY")
+		if err := s.write("C,REPLAY"); err != nil {
+			return err
+		}
+		select {
+		case <-s.ack:
+			return nil
+		case <-time.After(300 * time.Millisecond):
+		}
+	}
+	return fmt.Errorf("firmware did not acknowledge C,REPLAY")
 }
 func (s *serialSink) Ack() error { return s.write("A") }
 func (s *serialSink) Send(r obdwire.Record) error {
@@ -176,16 +203,40 @@ func (s *serialSink) ExitReplay() error {
 }
 func (s *serialSink) Close() error { return s.port.Close() }
 
-func (s *serialSink) echo() {
+// readLoop always drains the port: leftover output must not fill the device
+// buffers, and the handshake needs to see the firmware confirmation.
+func (s *serialSink) readLoop() {
 	_ = s.port.SetReadTimeout(200 * time.Millisecond)
 	buf := make([]byte, 512)
+	var line []byte
 	for {
 		n, err := s.port.Read(buf)
 		if n > 0 {
-			_, _ = os.Stdout.Write(buf[:n])
+			if s.echo {
+				_, _ = os.Stdout.Write(buf[:n])
+			}
+			for _, b := range buf[:n] {
+				if b == '\n' || b == '\r' {
+					s.checkAck(line)
+					line = line[:0]
+					continue
+				}
+				if len(line) < 64 {
+					line = append(line, b)
+				}
+			}
 		}
 		if err != nil {
 			return
+		}
+	}
+}
+
+func (s *serialSink) checkAck(line []byte) {
+	if string(line) == "K,REPLAY" {
+		select {
+		case s.ack <- struct{}{}:
+		default:
 		}
 	}
 }
@@ -201,6 +252,7 @@ func main() {
 		dryRun   = flag.Bool("dry-run", false, "do not open serial")
 		verbose  = flag.Bool("verbose", false, "print every record")
 		echo     = flag.Bool("echo", false, "echo firmware serial output")
+		reset    = flag.Bool("reset", true, "reset the board before replay")
 	)
 	flag.Parse()
 	if *file == "" {
@@ -223,14 +275,11 @@ func main() {
 	if *dryRun {
 		out = drySink{verbose: *verbose}
 	} else {
-		s, err := openSerialSink(*portName)
+		s, err := openSerialSink(*portName, *echo, *reset)
 		if err != nil {
 			log.Fatal(err)
 		}
 		out = s
-		if *echo {
-			go s.echo()
-		}
 	}
 	defer out.Close()
 	defer out.ExitReplay()
