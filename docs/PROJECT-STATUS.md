@@ -246,6 +246,7 @@ firmware para o scan, encerra a conexão e não usa mais o adaptador até um nov
 ## 9. Documentos relacionados
 
 - [README](../README.md)
+- [Plano de otimização](OPTIMIZATION-PLAN.md)
 - [Formato do logger](OBD2-LOGGER-FORMAT.md)
 - [Formato do replay](OBD2-REPLAY-FORMAT.md)
 - [Documentação por arquivo](logger/README.md)
