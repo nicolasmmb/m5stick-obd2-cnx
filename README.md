@@ -1,6 +1,7 @@
 # M5StickC Plus2 + TinyGo — POC Wi-Fi / BLE / Tela (OBD2)
 
-POC para validar TinyGo, Wi-Fi, BLE e o LCD do M5StickC Plus2 antes de integrar com OBD2.
+POCs para validar TinyGo, Wi-Fi, BLE e o LCD do M5StickC Plus2, incluindo a
+integração com um adaptador OBD2 BLE (ELM327) e a exibição dos dados ao vivo.
 
 > Guia completo do board (pinos, versões, conexão, Wi-Fi/BLE, OBD2 e testes):
 > **[M5STICKC-PLUS2-GUIDE.md](M5STICKC-PLUS2-GUIDE.md)**.
@@ -20,7 +21,7 @@ POC para validar TinyGo, Wi-Fi, BLE e o LCD do M5StickC Plus2 antes de integrar 
 | B8 | Simulador de areia | ✅ 1.000 / 10.000 grãos, grid 240×84 |
 | B9 | ENV IV no Grove (SHT40 + BMP280) | ✅ temp/umidade/pressão/altitude |
 | B10 | Fingerprint2 (A-K323CP) no Grove | ✅ abas, cadastro AutoEnroll, excluir/limpar, imagem, LED ring |
-| C | OBD2 | ⏸️ bloqueado: adaptador ELM327 Bluetooth Classic |
+| C | OBD2 BLE (ELM327 GATT) | ✅ 3 páginas: velocidade/RPM/litros, temperaturas, álcool/gasolina |
 
 ## Ideias de sensores e apps
 
@@ -48,8 +49,13 @@ hardware e checklist de sensores.
 ```
 poc/hello/        # print + tick + LED
 poc/wifi-scan/    # scan de redes Wi-Fi (serial)
-poc/ble-scan/     # scan BLE com nomes (serial)
+poc/ble-scan/     # scan BLE com nomes e service UUIDs (serial)
 poc/display-scan/ # tela: Wi-Fi + BLE, abas e navegação por botões
+poc/obd-probe/    # descobre e enumera serviços GATT do adaptador OBD2 (serial)
+poc/obd-client/   # handshake ELM327 + PIDs no serial (sem tela)
+poc/obd-bench/    # mede PIDs suportados, latência e taxa (Hz)
+poc/obd-tune/     # testa ATAT/ATST para reduzir latência
+poc/obd-display/  # conecta no ELM327 BLE e mostra RPM/vel/temp/throttle na tela
 poc/sensors/      # menu interativo de sensores na tela
 poc/mic-pdm/      # teste de RMS/dBFS do microfone na serial
 poc/env-iv/       # teste serial do ENV IV (SHT40 + BMP280)
@@ -61,12 +67,14 @@ poc/joystick2/    # tela de teste do Unit Joystick2 Hall (I2C Grove)
 poc/nfc/          # probe NFC-A do Unit NFC ST25R3916 (I2C Grove)
 lib/spm1423/      # driver PDM do SPM1423 usando I2S0 + DMA
 docs/             # ideias de sensores, apps e projetos
+docs/OBD2-DATA-CATALOG.md  # catálogo de PIDs, siglas, fórmulas e processos
+docs/OBD2-DECODED-DATA.md   # tabela por dado: confiabilidade, frequência e observações
 ```
 
 ## Comandos
 
 ```bash
-make build       # compila os seis POCs e mostra tamanho
+make build       # compila todos os POCs e mostra tamanho
 make hello       # flash + monitor
 make wifi        # flash + monitor
 make ble         # flash + monitor
@@ -80,6 +88,11 @@ make gps         # flash + monitor (tela do Unit GPS v1.1)
 make tof         # flash + monitor (tela do Unit Mini ToF-90)
 make joystick2   # flash + monitor (tela do Unit Joystick2)
 make nfc         # flash + monitor (probe NFC-A do Unit NFC)
+make obd         # flash + monitor (OBD2 BLE na tela)
+make obd-client  # flash + monitor (handshake/PIDs no serial)
+make obd-bench   # flash + monitor (benchmark de todos os PIDs)
+make obd-tune    # flash + monitor (teste de ATAT/ATST)
+make obd-probe   # flash + monitor (enumera GATT do adaptador OBD2)
 make monitor     # monitor serial apenas
 ```
 
@@ -96,6 +109,11 @@ tinygo flash -target=m5stick-c -port=/dev/cu.usbserial-XXXX \
 |---|---|---|
 | hello | 9,1 KB | 4,7 KB |
 | ble-scan | 228 KB | 17,8 KB |
+| obd-probe | 236 KB | 17,8 KB |
+| obd-client | 240 KB | 17,9 KB |
+| obd-bench | 300 KB | 19,3 KB |
+| obd-tune | 295 KB | 19,3 KB |
+| obd-display | 292 KB | 72,8 KB (16,2 KB de framebuffer) |
 | wifi-scan | 472 KB | 41,6 KB |
 | display-scan | 581 KB | 52,0 KB |
 | sensors | 149 KB | 39 KB + 65 KB do framebuffer |
@@ -656,11 +674,102 @@ No Zed, abra a pasta `m5stick-obd2-cnx` como raiz do projeto e reinicie o
 language server (`zed: restart language server`) se ele já estava rodando.
 Se mover o repositório, ajuste o caminho absoluto em `.zed/settings.json`.
 
-## Observação sobre OBD2
+## POC OBD2 BLE (`poc/obd-display`)
 
-`tinygo.org/x/bluetooth` + `espradio` implementam **somente BLE (GATT)**. ELM327
-Bluetooth Classic (SPP) não é suportado. Para a Fase C é necessário:
+> Catálogo completo de PIDs, siglas, fórmulas e processos:
+> **[docs/OBD2-DATA-CATALOG.md](docs/OBD2-DATA-CATALOG.md)**.
 
-1. adaptador OBD2 **BLE** (recomendado), ou
-2. ponte HC-05 mestre ligada à UART do M5, ou
-3. adaptador OBD2 **Wi-Fi** via TCP.
+O adaptador usado foi um ELM327 **BLE** que se anuncia como `OBDII`
+(`00:10:CC:4F:36:03`, RSSI ≈ -55 dBm) e expõe o serviço `FFF0`:
+
+| Item | Valor |
+|---|---|
+| Serviço | `0000fff0-0000-1000-8000-00805f9b34fb` |
+| Notificação (RX) | `FFF1` |
+| Escrita (TX) | `FFF2` |
+| MTU negociado | 248 |
+
+O `poc/obd-probe` descobre o adaptador, conecta e lista serviços e
+características no serial. O `poc/obd-display` faz o fluxo completo:
+
+1. scan ativo por nome `OBDII` ou serviço `FFF0`;
+2. conexão GATT e habilitação de notify em `FFF1`;
+3. handshake `ATZ`, `ATE0`, `ATL0`, `ATS0`, `ATSP0`;
+4. consulta `0100` para confirmar PIDs suportados;
+5. loop de dados por página, desenhando no LCD com framebuffer 4bpp.
+
+### Páginas da tela
+
+| Página | Dados (máx. 3) | Fonte |
+|---|---|---|
+| 1 | velocidade, RPM, combustível em litros | `010D`, `010C`, `012F` |
+| 2 | temperatura do líquido, ar admitido, catalisador | `0105`, `010F`, `013C` |
+| 3 | % álcool, % gasolina, tipo de combustível | `0152`, derivado, `0151` |
+
+- **A** = próxima página; **B** = página anterior.
+- O combustível em litros usa `tankCapacityDeciL = 440` (44,0 L) em
+  `poc/obd-display/main.go`. Ajuste para a capacidade real do seu tanque.
+- A tela usa um framebuffer 4bpp de 16,2 KB e envia ao LCD apenas as linhas
+  alteradas. O valor novo é composto fora da tela e enviado de uma vez, sem o
+  “apaga e desenha” que causava flicker/ghosting.
+- O layout é calculado: `headerH`, `marginX`, `colGap`, `rowGap` e `topH`
+  definem a grade; as colunas da página 1 são dimensionadas pela largura real
+  dos textos (`tinyfont.LineWidth`) e cada valor é centralizado na sua célula.
+- O loop consulta só os PIDs da página atual; combustível e etanol são
+  atualizados a cada 8–10 ciclos porque mudam devagar.
+
+Resposta real do adaptador:
+
+```text
+RX: ELM327 v2.1
+RX 0100: 4100BE3FB813AA
+010C => 410C0000AAAAAA   # RPM = 0 (motor desligado)
+010D => 410D00AAAAAAAA   # 0 km/h
+0105 => 410561AAAAAAAA   # 0x61 = 97 °C no líquido
+0111 => 4111...          # throttle
+```
+
+As respostas CAN são preenchidas com `AA`; o parser usa o tamanho fixo de cada
+PID e ignora o padding. Com o motor em marcha lenta o `010C` passa a devolver
+RPM diferente de zero.
+
+### Todos os PIDs e taxa medida
+
+`make obd-bench` enumera as páginas `0100/0120/0140/0160` e mede 3 amostras de
+cada PID. Resultado neste carro:
+
+- **43 PIDs suportados**: `01 03 04 05 06 07 0B 0C 0D 0E 0F 10 11 13 14 15
+  1C 1F 20 21 2E 2F 30 31 33 3C 40 41 42 43 44 45 46 47 49 4A 4C 4F 51 52
+  60 67 68`.
+- Latência média por PID: **166 ms** (mín. 126 ms, máx. 272 ms).
+- Varredura completa dos 43: **7,2 s** → **0,14 Hz**.
+- PID isolado (`010C`): **~5–7 Hz** (20 consultas em 4,0 s; com `ATAT0` chegou
+  a 6,9 Hz).
+- Comandos `AT*` levam **35–50 ms**; o custo extra é do adaptador/ECU.
+- Dados estáticos: VIN (`0902`) 247 ms, Calibration ID (`0904`) 531 ms,
+  CVN (`0906`) 233 ms, nome da ECU (`090A`) 233 ms.
+- DTCs: `03` 191 ms, `07` 222 ms, `0A` 141 ms.
+- Multi-PID **não funciona** neste adaptador: `010C0D` devolve resposta
+  malformada e `010C,010D` devolve `?`.
+
+O `make obd-tune` confirma que `ATAT0/ATAT2/ATST0A...32` não mudam
+significativamente a taxa: o limite é ~7 Hz por PID.
+
+### Estratégia para "todos os dados"
+
+Não dá para ler os 43 PIDs a 7 Hz cada: a taxa é compartilhada. O caminho é um
+escalonador por prioridade:
+
+| Grupo | Exemplos | Taxa sugerida |
+|---|---|---|
+| Rápido | RPM, velocidade, throttle, carga | 1,5–2 Hz cada (3–4 PIDs) |
+| Médio | temperaturas, fuel trims, MAP/MAF | 0,5–1 Hz |
+| Lento | distância, warm-ups, nível de combustível | 0,1–0,2 Hz |
+| Estático | VIN, Cal ID, CVN, DTCs, readiness | 1× por sessão ou 30–60 s |
+
+Assim a tela fica fluida nos dados que importam e o resto é atualizado em
+segundo plano.
+
+> `tinygo.org/x/bluetooth` + `espradio` implementam **somente BLE (GATT)**.
+> ELM327 Bluetooth Classic (SPP) continua sem suporte. Alternativas: adaptador
+> OBD2 BLE (usado aqui), ponte HC-05 mestre na UART ou adaptador Wi-Fi via TCP.

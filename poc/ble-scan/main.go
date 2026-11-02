@@ -53,6 +53,17 @@ func main() {
 		printed[addr] = name
 		println("DEV:", addr, "RSSI", result.RSSI, "NAME:", name)
 
+		// Print advertised service UUIDs. ELM327 BLE adapters usually
+		// advertise FFF0, FFE0 or 18F0 even when they have no name.
+		var svc strings.Builder
+		for _, u := range result.ServiceUUIDs() {
+			svc.WriteString(" ")
+			svc.WriteString(strings.ToLower(u.String()))
+		}
+		if svc.Len() > 0 {
+			println("    SVC:", svc.String())
+		}
+
 		lower := strings.ToLower(name)
 		if strings.Contains(lower, "obd") || strings.Contains(lower, "elm") ||
 			strings.Contains(lower, "vlink") || strings.Contains(lower, "v-link") ||

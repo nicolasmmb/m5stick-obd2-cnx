@@ -127,6 +127,9 @@ make gps
 make tof
 make joystick2
 make nfc
+make obd
+make obd-client
+make obd-probe
 ```
 
 Direto com TinyGo:
@@ -183,25 +186,35 @@ Notas:
 - **Somente BLE** (GATT). **Bluetooth Classic/SPP não é suportado.**
 - Active scan pede SCAN_RSP para obter nomes.
 - Medido: **10–14 dispositivos**, nomes recebidos.
-- O `poc/ble-scan` destaca nomes com `OBD`, `ELM`, `VLINK`, `ICAR`.
+- O `poc/ble-scan` destaca nomes com `OBD`, `ELM`, `VLINK`, `ICAR` e imprime
+  os service UUIDs anunciados (útil para achar adaptador sem nome).
 
 ## 8. Projeto OBD2
 
+> Catálogo completo de dados, siglas e processos:
+> **[docs/OBD2-DATA-CATALOG.md](docs/OBD2-DATA-CATALOG.md)**.
+
 ### 8.1 Status
 
-**Fase C pausada**: o adaptador ELM327 disponível é **Bluetooth Classic**,
-que o TinyGo não implementa. O restante do projeto (tela, sensores, Wi-Fi,
-BLE, units) já foi validado.
+**Fase C concluída com adaptador OBD2 BLE.** O ELM327 BLE testado se anuncia
+como `OBDII`, expõe o serviço `FFF0` e responde ao handshake e aos PIDs na
+tela do Stick:
+
+- `poc/obd-probe`: descobre o adaptador e enumera serviços/características.
+- `poc/obd-display`: conecta, faz o handshake ELM327 e mostra 3 páginas no
+  LCD: velocidade/RPM/litros, temperaturas e álcool/gasolina.
+
+O ELM327 **Bluetooth Classic** (SPP) continua sem suporte no TinyGo.
 
 ### 8.2 Opções de conexão
 
-1. **Adaptador OBD2 BLE** (recomendado) — GATT, funciona com
+1. **Adaptador OBD2 BLE** (recomendado e validado) — GATT, funciona com
    `tinygo.org/x/bluetooth`.
 2. **Ponte HC-05 mestre** ligada à UART do Stick (G32/G33) — converte Classic
    em serial.
 3. **Adaptador OBD2 Wi-Fi** — conectar via TCP usando `espradio`.
 
-### 8.3 Arquitetura planejada
+### 8.3 Arquitetura implementada
 
 ```
 [M5StickC Plus2] --BLE GATT / Wi-Fi TCP / UART--> [ELM327] --CAN--> [ECU]
@@ -218,20 +231,105 @@ Camadas:
 4. **UI**: tela com páginas (métricas, DTCs, status do adaptador).
 5. **Log**: serial e, se necessário, buffer em RAM.
 
-### 8.4 PIDs iniciais sugeridos
+### 8.4 Adaptador BLE validado
 
-| PID | Métrica |
+| Item | Valor |
 |---|---|
-| `010C` | RPM |
-| `010D` | velocidade |
-| `0105` | temperatura do líquido |
-| `0111` | throttle |
-| `010F` | temperatura do ar |
-| `010E` | avanço |
-| `03` | DTCs confirmados |
+| Nome anunciado | `OBDII` |
+| Endereço | `00:10:CC:4F:36:03` |
+| Serviço | `FFF0` |
+| Notificação (RX do Stick) | `FFF1` |
+| Escrita (TX do Stick) | `FFF2` |
+| MTU | 248 |
+| Firmware | `ELM327 v2.1` |
 
-Ainda **não há código OBD2** no repositório; a Fase C depende do adaptador
-adequado.
+O `FFF1` é a notificação e o `FFF2` é a escrita (o inverso do que alguns
+exemplos da internet assumem). O handshake que funcionou foi:
+
+```text
+ATZ     -> ELM327 v2.1
+ATE0    -> OK
+ATL0    -> OK
+ATS0    -> OK
+ATSP0   -> OK
+0100    -> 4100BE3FB813AA
+```
+
+Respostas curtas vêm preenchidas com `AA` (padding CAN). Exemplo:
+`410C0000AAAAAA` = PID `0C`, dois bytes de dados `00 00` e padding.
+
+Comandos:
+
+```bash
+make obd-probe   # enumera GATT do adaptador no serial
+make obd-client  # handshake ELM327 + PIDs no serial
+make obd         # abre a UI de 3 páginas no LCD
+```
+
+UI do `poc/obd-display`:
+
+| Página | Dados | PIDs |
+|---|---|---|
+| 1 | velocidade, RPM, combustível (L) | `010D`, `010C`, `012F` |
+| 2 | ECT, IAT, catalisador | `0105`, `010F`, `013C` |
+| 3 | % álcool, % gasolina, tipo | `0152`, derivado, `0151` |
+
+- **A** = próxima página; **B** = anterior.
+- Litros = `% * tankCapacityDeciL / 255 / 10`; o padrão é 44,0 L
+  (`tankCapacityDeciL = 440`), ajustável no código.
+- A UI usa framebuffer 4bpp (16,2 KB) e flush por linhas alteradas: o valor
+  novo é montado fora da tela e enviado de uma vez, sem flicker/ghosting.
+- O layout é derivado de `headerH`, `marginX`, `colGap`, `rowGap` e `topH`.
+  Na página 1 as larguras das células vêm da medida real dos textos
+  (`tinyfont.LineWidth`); cada valor é centralizado na célula.
+- Só os PIDs da página atual são consultados; combustível/etanol são
+  atualizados a cada 8–10 ciclos.
+
+### 8.5 PIDs implementados
+
+| PID | Métrica | Fórmula |
+|---|---|---|
+| `010C` | RPM | `(A*256 + B) / 4` |
+| `010D` | velocidade | `A` km/h |
+| `0105` | temperatura do líquido | `A - 40` °C |
+| `0111` | throttle | `A * 100 / 255` % |
+| `0100` | PIDs suportados | bitmask (diagnóstico) |
+
+Ainda não implementados na tela: `010F` (ar), `010E` (avanço) e `03` (DTCs). O
+adaptador testado informou `0100 = BE 3F B8 13`, que inclui `010C`, `010D`,
+`0105` e `0111`.
+
+Com o motor desligado, `010C` retorna `0000` (RPM 0); com o motor em marcha
+lenta o valor muda. A temperatura e o throttle continuam válidos com a ignição
+ligada.
+
+### 8.6 Todos os PIDs e taxa
+
+`make obd-bench` enumera todas as páginas de PIDs suportados e mede a latência.
+Neste carro:
+
+- **43 PIDs suportados** (páginas `0100`, `0120`, `0140`, `0160`).
+- Latência média: **166 ms/PID**; varredura completa: **7,2 s** (~0,14 Hz).
+- Um PID isolado: **5–7 Hz**; `ATAT0` chegou a 6,9 Hz.
+- `AT*`: 35–50 ms; o restante é adaptador/ECU.
+- Multi-PID não funciona (`010C0D` malformado; `010C,010D` → `?`).
+
+Não é possível ler os 43 PIDs em alta taxa: o barramento é compartilhado. A
+arquitetura recomendada é um escalonador por prioridade:
+
+| Grupo | Exemplos | Taxa |
+|---|---|---|
+| Rápido | RPM, velocidade, throttle, carga | 1,5–2 Hz cada |
+| Médio | temperaturas, fuel trims, MAP/MAF | 0,5–1 Hz |
+| Lento | distância, warm-ups, combustível | 0,1–0,2 Hz |
+| Estático | VIN, Cal ID, CVN, DTCs | 1× por sessão |
+
+Comandos:
+
+```bash
+make obd-bench   # lista PIDs suportados e mede ms/Hz
+make obd-tune    # compara ATAT/ATST
+```
 
 ## 9. Suportes (units) e configuração
 
