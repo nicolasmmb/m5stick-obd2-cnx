@@ -21,6 +21,19 @@ raw.log → cmd/obd-replay → serial 115200 → M5Stick REPLAY → cache → UI
 | `C,CLEAR` | limpa o cache |
 | `R,<registro>` | injeta um registro compacto |
 
+## Handshake
+
+Ao abrir a serial o host pulsa o reset da placa e repete `C,REPLAY` até receber
+a confirmação:
+
+| Linha Stick → host | Efeito |
+|---|---|
+| `K,REPLAY` | replay ativo |
+| `K,LIVE` | live ativo |
+
+Isso garante que o comando não se perca durante o boot e que o BLE não seja
+inicializado no modo replay.
+
 ### Exemplos
 
 ```text
@@ -78,6 +91,8 @@ Flags:
 | `--start` / `--end` | intervalo em ms |
 | `--dry-run` | não abre serial |
 | `--verbose` | mostra cada linha |
+| `--reset` | pulsa o reset antes do replay (padrão: ligado) |
+| `--echo` | mostra a saída da serial do Stick |
 
 ## Arquitetura
 
