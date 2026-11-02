@@ -3,8 +3,9 @@ TARGET ?= m5stick-c
 TINYGO ?= tinygo
 FILE ?= testdata/obd-logger-sample-compact.txt
 SPEED ?= 1
+DROP_AFTER ?= 0
 
-.PHONY: build check test logger log replay replay-device hello wifi ble display obd obd-client obd-bench obd-tune obd-logger obd-probe monitor clean
+.PHONY: build check test logger log replay replay-device sim hello wifi ble display obd obd-client obd-bench obd-tune obd-logger obd-probe monitor clean
 
 build:
 	$(TINYGO) build -target=$(TARGET) -size short -o /tmp/m5-hello.bin ./examples/hello
@@ -25,7 +26,7 @@ check:
 	done
 
 test:
-	go test ./internal/... ./cmd/...
+	go test ./internal/... ./cmd/... ./poc/obd2/obd-logger
 
 logger:
 	go build -o /tmp/obd-logger ./cmd/obd-logger
@@ -38,6 +39,9 @@ replay: logger
 
 replay-device:
 	go run ./cmd/obd-replay --port=$(PORT) --file=$(FILE) --speed=$(SPEED)
+
+sim:
+	go run ./cmd/obd-replay --sim --port=$(PORT) --file=$(FILE) --drop-after=$(DROP_AFTER)
 
 hello:
 	$(TINYGO) flash -target=$(TARGET) -port=$(PORT) -size short -monitor ./examples/hello
