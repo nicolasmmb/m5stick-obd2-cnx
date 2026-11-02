@@ -30,6 +30,8 @@ const (
 	pageF
 	pageB
 	pageV
+	pageT2
+	pageCL
 	pageInfo
 	pageCount
 )
@@ -81,6 +83,10 @@ type uiState struct {
 	bProto   [3]byte
 	vUID     [8]byte
 	vDSFID   uint8
+	t2Data   [4]byte
+	t2OK     bool
+	clData   [16]byte
+	clOK     bool
 	chipTyp  uint8
 	chipRev  uint8
 	detectUS int64
@@ -211,6 +217,31 @@ func main() {
 					st.vUID = c.UID
 					st.vDSFID = c.DSFID
 				}
+			case pageT2:
+				var c nfc.Card
+				c, ok, err = dev.Detect(ctx)
+				if ok && c.IsType2() {
+					st.uid = c.UID
+					st.uidLen = c.UIDLen
+					st.typeID = c.TypeID
+					st.t2Data, st.t2OK, _ = dev.Type2ReadPage(context.Background(), 4)
+					_ = dev.Halt(context.Background())
+				} else if ok {
+					ok = false // card is NFC-A but not Type 2
+				}
+			case pageCL:
+				var c nfc.Card
+				c, ok, err = dev.Detect(ctx)
+				if ok && c.IsClassic() {
+					st.uid = c.UID
+					st.uidLen = c.UIDLen
+					st.typeID = c.TypeID
+					key := [6]byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
+					st.clData, st.clOK, _ = dev.ClassicReadBlock(context.Background(), c.UID[:c.UIDLen], 1, key)
+					_ = dev.Halt(context.Background())
+				} else if ok {
+					ok = false
+				}
 			}
 			cancel()
 			st.detectUS = int64(time.Since(start) / time.Microsecond)
@@ -244,6 +275,14 @@ func main() {
 				println("nfc V", "uid", fmt.Sprintf("% X", st.vUID[:]),
 					"dsfid", st.vDSFID, "detect_us", st.detectUS,
 					"scans", st.scans, "err", st.errors)
+			case st.card && st.page == pageT2:
+				println("nfc T2", "uid", fmt.Sprintf("% X", st.uid[:st.uidLen]),
+					"page4", fmt.Sprintf("% X", st.t2Data[:]), "ok", st.t2OK,
+					"detect_us", st.detectUS, "err", st.errors)
+			case st.card && st.page == pageCL:
+				println("nfc CL", "uid", fmt.Sprintf("% X", st.uid[:st.uidLen]),
+					"block1", fmt.Sprintf("% X", st.clData[:]), "auth_ok", st.clOK,
+					"detect_us", st.detectUS, "err", st.errors)
 			default:
 				println("nfc", pageName(st.page), "no card; scans", st.scans,
 					"err", st.errors, "detect_us", st.detectUS, "rf", rfOn)
@@ -342,6 +381,10 @@ func render(st uiState) {
 		drawB(st)
 	case pageV:
 		drawV(st)
+	case pageT2:
+		drawT2(st)
+	case pageCL:
+		drawCL(st)
 	case pageInfo:
 		drawInfo(st)
 	}
@@ -396,6 +439,44 @@ func drawB(st uiState) {
 		fmt.Sprintf("%d us", st.detectUS), white)
 }
 
+func drawT2(st uiState) {
+	if !st.card {
+		drawSearch("NFC-A / TYPE 2")
+		return
+	}
+	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 34, "TYPE 2 / "+nfc.TypeName(st.typeID), gray)
+	tinyfont.WriteLine(&fb, &freemono.Bold9pt7b, 4, 50,
+		fmt.Sprintf("% X", st.uid[:st.uidLen]), green)
+	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 72, "PAGE 4", gray)
+	if st.t2OK {
+		tinyfont.WriteLine(&fb, &freemono.Bold12pt7b, 4, 96,
+			fmt.Sprintf("% X", st.t2Data[:]), white)
+	} else {
+		tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 96, "READ FALHOU", red)
+	}
+	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 112,
+		fmt.Sprintf("%d us", st.detectUS), gray)
+}
+
+func drawCL(st uiState) {
+	if !st.card {
+		drawSearch("NFC-A / MIFARE CLASSIC")
+		return
+	}
+	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 34, "CLASSIC / "+nfc.TypeName(st.typeID), gray)
+	tinyfont.WriteLine(&fb, &freemono.Bold9pt7b, 4, 50,
+		fmt.Sprintf("% X", st.uid[:st.uidLen]), green)
+	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 72, "BLOCO 1 (chave A)", gray)
+	if st.clOK {
+		tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 88,
+			fmt.Sprintf("% X", st.clData[:8]), white)
+		tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 102,
+			fmt.Sprintf("% X", st.clData[8:]), white)
+	} else {
+		tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 88, "AUTH/READ FALHOU", red)
+	}
+}
+
 func drawV(st uiState) {
 	if !st.card {
 		drawSearch("NFC-V / ISO15693")
@@ -421,8 +502,8 @@ func drawInfo(st uiState) {
 		fmt.Sprintf("RF %v  TELA %s  DETECT %d us", st.rf, pageName(st.page), st.detectUS), white)
 	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 68,
 		fmt.Sprintf("SCANS %d  ERRORS %d", st.scans, st.errors), white)
-	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 88, "FASE 1: A + F + B + V", gray)
-	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 102, "RW/NDEF: proxima fase", gray)
+	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 88, "FASE 2: READ T2 + CLASSIC", gray)
+	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 102, "WRITE/NDEF: proxima fase", gray)
 }
 
 func pageName(p int) string {
@@ -435,6 +516,10 @@ func pageName(p int) string {
 		return "B"
 	case pageV:
 		return "V"
+	case pageT2:
+		return "T2"
+	case pageCL:
+		return "CL"
 	}
 	return "INFO"
 }
@@ -451,6 +536,8 @@ func configurePage(p int) error {
 		return dev.ConfigureB(ctx)
 	case pageV:
 		return dev.ConfigureV(ctx)
+	case pageT2, pageCL:
+		return dev.ConfigureA(ctx)
 	}
 	return nil
 }
