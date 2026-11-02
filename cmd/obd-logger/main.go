@@ -114,10 +114,17 @@ func readPort(ctx context.Context, port serial.Port, loader *obdlog.Loader) erro
 	}
 	buf := make([]byte, 4096)
 	var pending []byte
+	var lastAck time.Time
 
 	for {
 		if ctx.Err() != nil {
 			return nil
+		}
+		// Tell the firmware that a host is listening. The firmware shows
+		// SERIAL=OK while these ACKs keep arriving.
+		if time.Since(lastAck) >= time.Second {
+			_, _ = port.Write([]byte("A\n"))
+			lastAck = time.Now()
 		}
 		n, err := port.Read(buf)
 		if n > 0 {

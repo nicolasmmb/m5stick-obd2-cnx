@@ -55,7 +55,9 @@ Também aceita NDJSON antigo.
 - Ctrl-C fecha a sessão e grava `metadata.json`;
 - linhas inválidas vão para `invalid.log`;
 - `data/<sessão>/` é criado automaticamente;
-- se o diretório existir, recebe sufixo `-1`, `-2`, etc.
+- se o diretório existir, recebe sufixo `-1`, `-2`, etc.;
+- o loader envia `A\n` a cada 1 s; o firmware usa isso para mostrar
+  `SERIAL=OK` na tela. Sem ACK por 3 s, mostra `DISC`.
 
 ## Solução de problemas
 

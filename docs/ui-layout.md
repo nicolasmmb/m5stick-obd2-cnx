@@ -19,20 +19,32 @@ Ocupa a tela inteira em **3 colunas × 2 linhas**, com 6 tiles de status.
 
 ```text
 ┌────────┬────────┬────────┐
-│  BLE   │  ELM   │ PID/s  │
+│ SERIAL │  BLE   │  ELM   │
 ├────────┼────────┼────────┤
-│  TX    │  ERR   │ UPTIME │
+│ PID/s  │  TX    │  ERR   │
 └────────┴────────┴────────┘
 ```
 
 | Tile | Ícone | Valor |
 |---|---|---|
-| BLE | barras de sinal | ON/OFF |
-| ELM | elo/conector | OK/ERR |
+| SERIAL | seta | WAIT / OK / DISC |
+| BLE | barras de sinal | OFF / SCAN / LINK / ON / ERR |
+| ELM | elo/conector | WAIT / INIT / OK / ERR |
 | PID/s | barras | taxa |
 | TX | seta | linhas enviadas |
 | ERR | exclamação | erros |
-| UPTIME | relógio | hh:mm |
+
+> `SERIAL` usa ACK do host: o leitor envia `A\n` a cada 1 s.
+> `WAIT` (laranja) = ainda sem ACK; `OK` (verde) = host respondendo;
+> `DISC` (vermelho) = ACK parou por mais de 3 s.
+
+- `BLE=SCAN` (laranja) enquanto procura o adaptador;
+- `BLE=LINK` (ciano) durante a conexão;
+- `BLE=ON` (verde) conectado;
+- `ELM=WAIT` (cinza) quando o BLE ainda não conectou — não é erro;
+- `ELM=INIT` (laranja) durante o handshake;
+- `ELM=OK` (verde) handshake concluído;
+- `ELM=ERR` (vermelho) só quando o BLE conectou e o ELM falhou.
 
 Cores:
 

@@ -82,33 +82,39 @@ func main() {
 
 	initDisplay()
 	initButtons()
-	started = time.Now()
-	drawPage()
+	bootTime = time.Now()
+	started = bootTime
+	go serialAckLoop()
+	go uiLoop()
 
 	time.Sleep(time.Second)
 	println("obd-logger: starting")
 	if err := adapter.Enable(); err != nil {
 		println("enable failed:", err.Error())
 		for {
-			tickUI()
-			time.Sleep(200 * time.Millisecond)
+			time.Sleep(time.Second)
 		}
 	}
 	adapter.SetScanType(bluetooth.ScanTypeActive)
 
 	for {
 		err := runSession()
-		bleOK = false
-		elmOK = false
-		drawPage()
 		if err != nil {
 			println("obd-logger:", err.Error())
 		}
-		waitUI(5 * time.Second)
+		if bleState == bleConnected {
+			elmState = elmErr
+		} else {
+			bleState = bleScan
+			elmState = elmWait
+		}
+		time.Sleep(5 * time.Second)
 	}
 }
 
 func runSession() error {
+	bleState = bleScan
+	elmState = elmWait
 	var addr bluetooth.Address
 	found := false
 	done := make(chan struct{})
@@ -117,20 +123,6 @@ func runSession() error {
 		adapter.StopScan()
 		close(done)
 	}()
-	uiStop := make(chan struct{})
-	uiDone := make(chan struct{})
-	go func() {
-		defer close(uiDone)
-		for {
-			select {
-			case <-uiStop:
-				return
-			default:
-				tickUI()
-				time.Sleep(150 * time.Millisecond)
-			}
-		}
-	}()
 	err := adapter.Scan(func(_ *bluetooth.Adapter, r bluetooth.ScanResult) {
 		if found {
 			return
@@ -138,12 +130,11 @@ func runSession() error {
 		if r.HasServiceUUID(uuidFFF0) || strings.Contains(strings.ToLower(r.LocalName()), "obd") {
 			addr = r.Address
 			found = true
+			bleState = bleConnecting
 			println("obd-logger: found", r.Address.String(), r.LocalName())
 			adapter.StopScan()
 		}
 	})
-	close(uiStop)
-	<-uiDone
 	if err != nil {
 		<-done
 		return err
@@ -157,6 +148,7 @@ func runSession() error {
 	if err != nil {
 		return err
 	}
+	bleState = bleConnected
 	services, err := dev.DiscoverServices([]bluetooth.UUID{uuidFFF0})
 	if err != nil {
 		return err
@@ -174,9 +166,7 @@ func runSession() error {
 	}); err != nil {
 		return err
 	}
-	bleOK = true
-	drawPage()
-
+	elmState = elmInit
 	e := &elm{write: writeChar}
 	for _, cmd := range []string{"ATZ", "ATE0", "ATL0", "ATS0", "ATSP0"} {
 		if _, err := e.command(cmd, 3*time.Second); err != nil {
@@ -184,38 +174,26 @@ func runSession() error {
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	elmOK = true
-	drawPage()
+	elmState = elmOK
 
 	vin := readVIN(e)
 	start := time.Now()
 	cycle := 0
 	emitStart(vin)
-	drawPage()
 
 	for {
 		for _, p := range fastPIDs {
 			if !emitPID(e, p, start) {
 				time.Sleep(200 * time.Millisecond)
 			}
-			tickUI()
 		}
 		cycle++
 		if cycle%4 == 0 {
 			for _, p := range slowPIDs {
 				emitPID(e, p, start)
 				time.Sleep(20 * time.Millisecond)
-				tickUI()
 			}
 		}
-		time.Sleep(100 * time.Millisecond)
-	}
-}
-
-func waitUI(d time.Duration) {
-	end := time.Now().Add(d)
-	for time.Now().Before(end) {
-		tickUI()
 		time.Sleep(100 * time.Millisecond)
 	}
 }

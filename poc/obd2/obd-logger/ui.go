@@ -52,13 +52,17 @@ var (
 	btnA, btnB uint32
 	lastA      time.Time
 	lastB      time.Time
+	lastAState bool
+	lastBState bool
 
-	bleOK    bool
-	elmOK    bool
-	txLines  int
-	errCount int
-	samples  int
-	started  time.Time
+	serialAckNano int64
+	bootTime      time.Time
+	bleState      int
+	elmState      int
+	txLines       int
+	errCount      int
+	samples       int
+	started       time.Time
 
 	latestSpeed int
 	latestRPM   int
@@ -75,6 +79,21 @@ const (
 	iconClock
 	iconGauge
 	iconFuel
+)
+
+const (
+	bleOff = iota
+	bleScan
+	bleConnecting
+	bleConnected
+	bleErr
+)
+
+const (
+	elmWait = iota
+	elmInit
+	elmOK
+	elmErr
 )
 
 type rect struct {
@@ -119,7 +138,9 @@ func initDisplay() {
 		machine.GPIO5,
 		machine.GPIO27,
 	)
-	display.IsBGR(true)
+	// The Plus2 panel used here renders RGB565 with RGB order.
+	// With BGR enabled, orange (R+G) was appearing blue.
+	display.IsBGR(false)
 	display.Configure(st7789.Config{
 		Width:        135,
 		Height:       240,
@@ -132,8 +153,10 @@ func initDisplay() {
 }
 
 func initButtons() {
+	// GPIO34-39 are input-only and have no internal pull-up on ESP32.
+	// The M5StickC Plus2 board provides external pull-ups, so use plain input.
 	for _, p := range []machine.Pin{machine.GPIO37, machine.GPIO39} {
-		p.Configure(machine.PinConfig{Mode: machine.PinInputPullup})
+		p.Configure(machine.PinConfig{Mode: machine.PinInput})
 	}
 	_ = machine.GPIO37.SetInterrupt(machine.PinFalling, func(machine.Pin) {
 		atomic.AddUint32(&btnA, 1)
@@ -141,17 +164,96 @@ func initButtons() {
 	_ = machine.GPIO39.SetInterrupt(machine.PinFalling, func(machine.Pin) {
 		atomic.AddUint32(&btnB, 1)
 	})
+	lastAState = machine.GPIO37.Get()
+	lastBState = machine.GPIO39.Get()
+}
+
+func bleStatus() (string, color.RGBA, color.RGBA) {
+	switch bleState {
+	case bleScan:
+		return "SCAN", darkAmber, amber
+	case bleConnecting:
+		return "LINK", darkCyan, cyan
+	case bleConnected:
+		return "ON", darkGreen, green
+	case bleErr:
+		return "ERR", darkRed, red
+	default:
+		return "OFF", panel, gray
+	}
+}
+
+func elmStatus() (string, color.RGBA, color.RGBA) {
+	switch elmState {
+	case elmInit:
+		return "INIT", darkAmber, amber
+	case elmOK:
+		return "OK", darkGreen, green
+	case elmErr:
+		return "ERR", darkRed, red
+	default:
+		return "WAIT", panel, gray
+	}
+}
+
+func serialStatus() (string, color.RGBA, color.RGBA) {
+	if ack := atomic.LoadInt64(&serialAckNano); ack != 0 {
+		if time.Since(time.Unix(0, ack)) <= 3*time.Second {
+			return "OK", darkGreen, green
+		}
+		return "DISC", darkRed, red
+	}
+	if !bootTime.IsZero() && time.Since(bootTime) < 5*time.Second {
+		return "WAIT", darkAmber, amber
+	}
+	return "DISC", darkRed, red
+}
+
+func serialAckLoop() {
+	buf := make([]byte, 32)
+	for {
+		n := machine.Serial.Buffered()
+		if n > 0 {
+			if n > len(buf) {
+				n = len(buf)
+			}
+			m, _ := machine.Serial.Read(buf[:n])
+			for _, b := range buf[:m] {
+				if b == 'A' {
+					atomic.StoreInt64(&serialAckNano, time.Now().UnixNano())
+				}
+			}
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 }
 
 func handleButtons() bool {
 	now := time.Now()
 	changed := false
-	if atomic.SwapUint32(&btnA, 0) > 0 && now.Sub(lastA) > 250*time.Millisecond {
+
+	// Interrupt path (preferred).
+	aPressed := atomic.SwapUint32(&btnA, 0) > 0
+	bPressed := atomic.SwapUint32(&btnB, 0) > 0
+
+	// Polling fallback for boards where the A/B interrupt does not fire.
+	a := machine.GPIO37.Get()
+	b := machine.GPIO39.Get()
+	if !a && lastAState {
+		aPressed = true
+	}
+	if !b && lastBState {
+		bPressed = true
+	}
+	lastAState = a
+	lastBState = b
+
+	if aPressed && now.Sub(lastA) > 250*time.Millisecond {
 		lastA = now
 		page = (page + 1) % 2
 		changed = true
 	}
-	if atomic.SwapUint32(&btnB, 0) > 0 && now.Sub(lastB) > 250*time.Millisecond {
+	if bPressed && now.Sub(lastB) > 250*time.Millisecond {
 		lastB = now
 		page = (page + 1) % 2
 		changed = true
@@ -159,13 +261,14 @@ func handleButtons() bool {
 	return changed
 }
 
-func tickUI() {
-	if handleButtons() {
-		drawPage()
-		return
-	}
-	if time.Since(lastDraw) > 500*time.Millisecond {
-		drawPage()
+func uiLoop() {
+	for {
+		if handleButtons() {
+			drawPage()
+		} else if time.Since(lastDraw) > 500*time.Millisecond {
+			drawPage()
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
 }
 
@@ -202,20 +305,10 @@ func drawStatusPage() {
 			rate = float64(samples) / s
 		}
 	}
-	up := "00:00"
-	if !started.IsZero() {
-		d := time.Since(started)
-		up = pad2(int(d/time.Minute)) + ":" + pad2(int((d/time.Second)%60))
-	}
 
-	bleFill, bleAccent := panel, red
-	if bleOK {
-		bleFill, bleAccent = darkGreen, green
-	}
-	elmFill, elmAccent := panel, red
-	if elmOK {
-		elmFill, elmAccent = darkCyan, cyan
-	}
+	serialValue, serialFill, serialAccent := serialStatus()
+	bleValue, bleFill, bleAccent := bleStatus()
+	elmValue, elmFill, elmAccent := elmStatus()
 	errCol := green
 	errFill := panel
 	if errCount > 0 {
@@ -223,12 +316,12 @@ func drawStatusPage() {
 		errFill = darkRed
 	}
 
-	drawStatusTile(rect{in.x, in.y, colW, rowH}, iconBLE, "BLE", onOff(bleOK), bleFill, bleAccent)
-	drawStatusTile(rect{in.x + colW + gap, in.y, colW, rowH}, iconLink, "ELM", yesNo(elmOK), elmFill, elmAccent)
-	drawStatusTile(rect{in.x + 2*(colW+gap), in.y, w3, rowH}, iconRate, "PID/s", strconv.FormatFloat(rate, 'f', 1, 64), panel, cyan)
-	drawStatusTile(rect{in.x, in.y + rowH + gap, colW, h2}, iconTx, "TX", strconv.Itoa(txLines), darkAmber, amber)
-	drawStatusTile(rect{in.x + colW + gap, in.y + rowH + gap, colW, h2}, iconErr, "ERR", strconv.Itoa(errCount), errFill, errCol)
-	drawStatusTile(rect{in.x + 2*(colW+gap), in.y + rowH + gap, w3, h2}, iconClock, "UPTIME", up, panel, white)
+	drawStatusTile(rect{in.x, in.y, colW, rowH}, iconTx, "SERIAL", serialValue, serialFill, serialAccent)
+	drawStatusTile(rect{in.x + colW + gap, in.y, colW, rowH}, iconBLE, "BLE", bleValue, bleFill, bleAccent)
+	drawStatusTile(rect{in.x + 2*(colW+gap), in.y, w3, rowH}, iconLink, "ELM", elmValue, elmFill, elmAccent)
+	drawStatusTile(rect{in.x, in.y + rowH + gap, colW, h2}, iconRate, "PID/s", strconv.FormatFloat(rate, 'f', 1, 64), panel, cyan)
+	drawStatusTile(rect{in.x + colW + gap, in.y + rowH + gap, colW, h2}, iconTx, "TX", strconv.Itoa(txLines), darkAmber, amber)
+	drawStatusTile(rect{in.x + 2*(colW+gap), in.y + rowH + gap, w3, h2}, iconErr, "ERR", strconv.Itoa(errCount), errFill, errCol)
 }
 
 func drawStatusTile(r rect, icon int, label, value string, fill, accent color.RGBA) {

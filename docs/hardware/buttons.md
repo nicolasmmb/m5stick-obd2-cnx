@@ -13,13 +13,16 @@
 
 ## Como funciona
 
-Os botões são entradas digitais com pull-up. O acionamento puxa o pino para
-baixo, então o evento útil é a borda de descida (**falling**).
+Os botões são entradas digitais com pull-up **externo na placa**. O acionamento
+puxa o pino para baixo, então o evento útil é a borda de descida (**falling**).
+
+> GPIO34–39 são input-only e **não têm pull-up interno** no ESP32.
+> Use `machine.PinInput`, não `PinInputPullup`; a placa já tem o pull-up externo.
 
 O POC usa interrupção e contador atômico:
 
 ```go
-p.Configure(machine.PinConfig{Mode: machine.PinInputPullup})
+p.Configure(machine.PinConfig{Mode: machine.PinInput})
 p.SetInterrupt(machine.PinFalling, func(machine.Pin) {
     atomic.AddUint32(&counter, 1)
 })
