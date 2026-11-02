@@ -79,6 +79,8 @@ type uiState struct {
 	bPupi    [4]byte
 	bApp     [4]byte
 	bProto   [3]byte
+	vUID     [8]byte
+	vDSFID   uint8
 	chipTyp  uint8
 	chipRev  uint8
 	detectUS int64
@@ -170,7 +172,7 @@ func main() {
 			scans:   atomic.LoadUint32(&scans),
 			errors:  atomic.LoadUint32(&errors),
 		}
-		if rfOn && page != pageV {
+		if rfOn {
 			ctx, cancel := context.WithTimeout(context.Background(), 120*time.Millisecond)
 			start := time.Now()
 			ok := false
@@ -202,6 +204,13 @@ func main() {
 					st.bApp = c.Application
 					st.bProto = c.Protocol
 				}
+			case pageV:
+				var c nfc.ISO15693Card
+				c, ok, err = dev.DetectV(ctx)
+				if ok {
+					st.vUID = c.UID
+					st.vDSFID = c.DSFID
+				}
 			}
 			cancel()
 			st.detectUS = int64(time.Since(start) / time.Microsecond)
@@ -231,6 +240,10 @@ func main() {
 				println("nfc B", "pupi", fmt.Sprintf("% X", st.bPupi[:]),
 					"app", fmt.Sprintf("% X", st.bApp[:]), "proto", fmt.Sprintf("% X", st.bProto[:]),
 					"detect_us", st.detectUS, "scans", st.scans, "err", st.errors)
+			case st.card && st.page == pageV:
+				println("nfc V", "uid", fmt.Sprintf("% X", st.vUID[:]),
+					"dsfid", st.vDSFID, "detect_us", st.detectUS,
+					"scans", st.scans, "err", st.errors)
 			default:
 				println("nfc", pageName(st.page), "no card; scans", st.scans,
 					"err", st.errors, "detect_us", st.detectUS, "rf", rfOn)
@@ -384,9 +397,15 @@ func drawB(st uiState) {
 }
 
 func drawV(st uiState) {
-	tinyfont.WriteLine(&fb, &freemono.Bold12pt7b, 4, 56, "NFC-V", yellow)
-	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 76, "ISO15693 / ICODE", white)
-	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 96, "proxima fase", gray)
+	if !st.card {
+		drawSearch("NFC-V / ISO15693")
+		return
+	}
+	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 36, "NFC-V / ISO15693", gray)
+	tinyfont.WriteLine(&fb, &freemono.Bold9pt7b, 4, 52,
+		fmt.Sprintf("% X", st.vUID[:]), green)
+	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 74,
+		fmt.Sprintf("DSFID %02X   %d us", st.vDSFID, st.detectUS), white)
 }
 
 func drawSearch(proto string) {
@@ -402,8 +421,8 @@ func drawInfo(st uiState) {
 		fmt.Sprintf("RF %v  TELA %s  DETECT %d us", st.rf, pageName(st.page), st.detectUS), white)
 	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 68,
 		fmt.Sprintf("SCANS %d  ERRORS %d", st.scans, st.errors), white)
-	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 88, "FASE 1: A + F + B", gray)
-	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 102, "NFC-V: proxima fase", gray)
+	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 88, "FASE 1: A + F + B + V", gray)
+	tinyfont.WriteLine(&fb, &proggy.TinySZ8pt7b, 4, 102, "RW/NDEF: proxima fase", gray)
 }
 
 func pageName(p int) string {
@@ -430,6 +449,8 @@ func configurePage(p int) error {
 		return dev.ConfigureF(ctx)
 	case pageB:
 		return dev.ConfigureB(ctx)
+	case pageV:
+		return dev.ConfigureV(ctx)
 	}
 	return nil
 }
