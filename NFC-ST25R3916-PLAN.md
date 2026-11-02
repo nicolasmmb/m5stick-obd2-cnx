@@ -303,3 +303,149 @@ make bench-compare FROM=before TO=after
 - **Tags 125 kHz** não são suportadas pelo ST25R3916.
 - Escrita Classic ainda em depuração; não usar em cartões de acesso.
 - Emulação atual só responde ao polling.
+
+## 14. Bases de referência (libs e documentos originais)
+
+### 14.1 M5Stack — produto e documentos
+
+| Fonte | Uso |
+|---|---|
+| <https://docs.m5stack.com/en/products/sku/U216> | página oficial do Unit NFC (U216) |
+| <https://shop.m5stack.com/products/nfc-unit-st25r3916> | especificações, fotos e documentos |
+| <https://docs.m5stack.com/en/unit/Unit_NFC> | documentação do unit (quando publicada) |
+
+### 14.2 UIFlow (MicroPython) — referência de paridade NFC-A
+
+Repositório: <https://github.com/m5stack/uiflow-micropython>
+
+| Arquivo | Uso no nosso port |
+|---|---|
+| `m5stack/libs/unit/nfc.py` | classe `NFCUnit` (wrapper do unit) |
+| `m5stack/libs/driver/nfc.py` | `NFCReader`, `Card`, tabelas de tipo/memória, identificação |
+| `m5stack/libs/driver/st25r3916.py` | init, configuração NFC-A, anticolisão, Crypto1 auth/read/write |
+| `m5stack/libs/driver/mifare_classic1.py` | Crypto1, CRC-A, paridade, `suc_23` |
+| `docs/source/unit/nfc.rst` | API documentada (detect/read/write/halt/rf_on/off) |
+| `examples/unit/nfc/cores3_unit_nfc_example.py` | fluxo de exemplo (detect/read/write) |
+
+**Limite importante:** a UIFlow implementa **somente NFC-A**. Não há NFC-F,
+NFC-B, NFC-V, NDEF, ISO-DEP nem emulação.
+
+### 14.3 M5Unit-NFC (C/C++) — referência de paridade completa
+
+Repositório: <https://github.com/m5stack/M5Unit-NFC>
+
+Dependências: [M5UnitUnified](https://github.com/m5stack/M5UnitUnified),
+[M5Utility](https://github.com/m5stack/M5Utility),
+[M5HAL](https://github.com/m5stack/M5HAL).
+
+| Arquivo | Uso no nosso port |
+|---|---|
+| `README.md` | matriz de PICCs suportados, emulação, limitações (I2C/Plus SL3) |
+| `src/unit/unit_ST25R3916.cpp/.hpp` | transporte, init, PT memory, timers, IRQs |
+| `src/unit/unit_ST25R3916_nfca.cpp` | configuração NFC-A |
+| `src/unit/unit_ST25R3916_nfcb.cpp` | configuração NFC-B (tabela legada usada no port) |
+| `src/unit/unit_ST25R3916_nfcf.cpp` | configuração FeliCa + emulação |
+| `src/unit/unit_ST25R3916_nfcv.cpp` | configuração ISO15693 |
+| `src/nfc/layer/a/nfc_layer_a.cpp` | detecção, read/write NFC-A |
+| `src/nfc/layer/f/nfc_layer_f.cpp` | FeliCa detect/system codes/read/write |
+| `src/nfc/layer/f/emulation_layer_f.cpp` + `_ST25R3916.cpp` | emulação NFC-F (PT memory, TSN, polling) |
+| `src/nfc/layer/v/nfc_layer_v.cpp` | ISO15693 detect/read/write |
+| `src/nfc/layer/b/nfc_layer_b.cpp` | NFC-B REQB/ATQB, ISO-DEP |
+| `src/nfc/crypto/mifare_classic_crypto1.hpp` | Crypto1 |
+| `src/nfc/ndef/*` | NDEF/TLV/records |
+| `src/nfc/isoDEP/*` | APDU/DESFire/file systems |
+| `test/mifare_classic_crypto1_test.cpp` | vetor Proxmark (usado no teste da nossa lib) |
+| `examples/UnitUnified/NFCA|NFCB|NFCF|NFCV` | detect/dump/read-write/emulation |
+
+**Observação de hardware:** a README da C++ alerta que I2C lento (especialmente
+SoftwareI2C) inviabiliza o timing de emulação. O Unit NFC usa I2C de hardware
+no StickC; a emulação básica foi validada, a completa precisa de medição.
+
+### 14.4 STMicroelectronics e normas
+
+| Fonte | Uso |
+|---|---|
+| [ST25R3916 product page](https://www.st.com/en/imaging-and-photonics-solutions/st25r3916.html) | datasheet, reference manual e API |
+| Datasheet **DS12484** | registradores, timers, FIFO, PT memory, target mode |
+| ST RFAL / ST25R3916 API | referência de sequências (a C++ usa um port) |
+| ISO/IEC 14443-3/4 | NFC-A/B, anticolisão, ISO-DEP |
+| ISO/IEC 15693 | NFC-V (inventory, read/write) |
+| ISO/IEC 18092 (NFC-F) / FeliCa | polling, SENSF, serviços/blocos |
+| NFC Forum NDEF/TLV | Type 2/3/4/5 |
+| Proxmark3 test vector | validação do Crypto1 |
+
+## 15. Matriz de comparação com as libs originais
+
+Legenda: ✅ implementado/validado · 🟡 implementado, validação pendente ·
+❌ não implementado · — não se aplica.
+
+| Recurso | UIFlow (Py) | M5Unit-NFC (C/C++) | M5Unit-NFC-Go (nosso) |
+|---|---|---|---|
+| Init ST25R3916 (I2C) | ✅ | ✅ | ✅ |
+| NFC-A detect/UID/ATQA/SAK | ✅ | ✅ | ✅ (HW) |
+| NFC-A Type 2 read | ✅ | ✅ | ✅ (host) |
+| NFC-A Type 2 write | ✅ | ✅ | 🟡 (host; sem tag) |
+| MIFARE Classic auth/read | ✅ | ✅ | ✅ (HW) |
+| MIFARE Classic write | ✅ | ✅ | 🟡 (HW pendente) |
+| NFC-B detect/ATQB | ❌ | ✅ | ✅ (lib; sem tag) |
+| NFC-B ISO-DEP/APDU | ❌ | ✅ | ❌ |
+| NFC-F detect/IDm/PMm | ❌ | ✅ | ✅ (HW) |
+| NFC-F system codes/tipo | ❌ | ✅ | ✅ (HW) |
+| NFC-F Read Without Encryption | ❌ | ✅ | ✅ (API) |
+| NFC-F Write / Lite-S auth | ❌ | ✅ | ❌ |
+| NFC-V detect/UID/DSFID | ❌ | ✅ | ✅ (lib; sem tag) |
+| NFC-V read/write | ❌ | ✅ | ❌ |
+| NDEF Type 2/3/4/5 | ❌ | ✅ | ❌ |
+| Emulação NFC-A | ❌ | ✅ | ❌ |
+| Emulação NFC-F (polling) | ❌ | ✅ | ✅ (HW/Flipper) |
+| Emulação NFC-F completa | ❌ | ✅ | ❌ |
+| DESFire/Plus/ST25TA/value blocks | ❌ | ✅ | ❌ |
+| Transporte SPI | ❌ | ✅ | ❌ (U216 é I2C) |
+| 0 alocações por operação | — | — | ✅ |
+| `context`/timeouts | parcial | ✅ | ✅ |
+| Leitura de 4/7 bytes UID e cascade | ✅ | ✅ | ✅ |
+| Anticolisão CL1/CL2 | ✅ | ✅ | ✅ |
+| HLTA / RF on/off | ✅ | ✅ | ✅ |
+| Tabela de tipos e memória | ✅ | ✅ | parcial (A/F) |
+
+### 15.1 Diferenças intencionais
+
+| Item | Original | Nosso |
+|---|---|---|
+| UIFlow: `fill_color` do LED | brilho aplicado 2× (bug) | aplicado 1× (Joystick2, outro unit) |
+| Endereço/limites | alguns sem validação | validados e com erros tipados |
+| NFC-F emulação | software/estado completo | polling via PT memory + TSN (básico) |
+| I2C | UIFlow 400 kHz; C++ 400 kHz | 400 kHz; sem IRQ no Grove |
+| Escrita | sem gate | gate B 2× + whitelist de bloco/página |
+
+### 15.2 Mapa de port (o que veio de onde)
+
+| Nosso arquivo | Base principal |
+|---|---|
+| `st25r3916.go` | `unit_ST25R3916*.cpp` + `st25r3916.py` |
+| `nfca.go` | `nfc_layer_a.cpp` + `nfc.py` |
+| `crypto1.go` / `classic.go` | `mifare_classic1.py` + `mifare_classic_crypto1.hpp` + vetor Proxmark |
+| `type2` (em `classic.go`) | `nfc.py` (`type2_read_quad/write_page`) |
+| `nfcv.go` | `nfcv.cpp` + `unit_ST25R3916_nfcv.cpp` |
+| `nfcb` (em `nfca.go`/`st25r3916.go`) | `unit_ST25R3916_nfcb.cpp` (tabela legada) |
+| `felica.go` | `nfc_layer_f.cpp` + `nfcf.cpp` |
+| `emulation_f.go` | `emulation_layer_f.cpp` + `_ST25R3916.cpp` + `nfcf.cpp` |
+| Tabelas de tipo/memória | `nfc.py` (`_TYPE_NAMES`, `_USER_MEMORY`) |
+
+## 16. Como comparar/reproduzir
+
+1. Abra os arquivos das libs originais nos links acima.
+2. Compare a sequência de init com `st25r3916.go` (ordem de registradores).
+3. Rode os testes da nossa lib:
+   ```bash
+   cd ../M5Unit-NFC-Go
+   make test && make alloc && make bench
+   ```
+4. Para cada protocolo, use a tela correspondente do POC e compare com o
+   exemplo C++ equivalente (`examples/UnitUnified/NFCx/...`).
+5. Validação de hardware: anote o cartão, UID/IDm, tipo, system codes e o
+   resultado na §11.
+
+> As referências acima são as versões `master`/`main` consultadas em
+> **2026-11-01**; ao atualizar a lib original, revisar as sequências de init e
+> emulação.
