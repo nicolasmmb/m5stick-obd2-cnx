@@ -38,7 +38,7 @@ conjunto: consumo instantâneo não é um PID que capturamos.
 | PID | Dado | Tipo / descrição | Exemplo exibido | Confiabilidade | Frequência | Observações |
 |---|---|---|---|---|---|---|
 | `01` | Monitor status since DTCs cleared | Bitmask: MIL, nº de DTCs e readiness | MIL OFF • 0 DTCs | Alta | 0,1–0,2 Hz | Raw `00 07 E1 00`: MIL apagada, 0 DTCs, ignição por faísca, testes disponíveis completos |
-| `03` | Fuel system status | Bitmask por banco (2 bytes) | Fuel: N/D | Média | 0,1–0,2 Hz | Raw `00 00`: nenhum estado de loop reportado |
+| `03` | Fuel system status | Bitmask por banco (2 bytes) | Fuel: N/D | Alta (formato) | 0,1–0,2 Hz | Raw `00 00`: `0x00` = reservado/não disponível; nenhum estado de loop reportado |
 | `04` | Calculated engine load | Carga calculada do motor (%) | 0% | Alta | ~6 Hz máx.; sob demanda | Raw `00` = 0% com motor desligado |
 | `05` | Engine coolant temperature (ECT) | Temperatura do líquido (°C) | 75 °C | Alta | ~1,8 Hz (página 2) | Raw `73` = 75 °C |
 | `06` | Short term fuel trim bank 1 (STFT) | Correção rápida de combustível (%) | 0% | Alta | ~6 Hz máx.; sob demanda | Raw `80` = 0% |
@@ -74,12 +74,12 @@ conjunto: consumo instantâneo não é um PID que capturamos.
 | `49` | Accelerator pedal position D | Posição do pedal D (%) | 19% | Alta | ~6 Hz máx.; sob demanda | Raw `31` = 19,2% |
 | `4A` | Accelerator pedal position E | Posição do pedal E (%) | 10% | Alta | ~6 Hz máx.; sob demanda | Raw `1A` = 10,2% |
 | `4C` | Commanded throttle actuator | Atuador de borboleta comandado (%) | 23% | Alta | ~6 Hz máx.; sob demanda | Raw `3A` = 22,7% |
-| `4F` | Max λ/O2 voltage/O2 current/MAP | Limites máximos | — | Baixa / Parcial | 1×/sessão | Raw `00 00 00 00`: limites não reportados |
-| `51` | Fuel type | Enumeração do combustível | Etanol | Alta (enum) | 1×/sessão | Raw `03` = Etanol; conflita com `0152` ≈ 40% |
+| `4F` | External Test Equipment Configuration #1 | Limites máximos de λ, tensão O2, corrente O2 e MAP | — | Alta (formato) / sem valor | 1×/sessão | Raw `00 00 00 00`: limites não configurados/reportados |
+| `51` | Fuel type | Enumeração do combustível | Etanol | Alta (enum) | 1×/sessão | Raw `03` = Etanol; é o tipo declarado, não o percentual da mistura (esse vem de `0152`) |
 | `52` | Ethanol fuel % | Percentual de etanol (%) | 38% (ou 40%) | Alta | ~0,5–1 Hz (página 3) | Bench: raw `62` = 38,4%; em outra leitura o app mostrou 40% (raw ≈ `66`) |
 | `60` | PIDs supported 61–80 | Bitmask | bitmask | Alta | 1×/sessão | Usado para descobrir a página seguinte |
 | `67` | Engine coolant temperature (2 sensores) | Flags + temperaturas (°C) | 75 °C (S1) | Alta | ~6 Hz máx.; sob demanda | Não usado no app (usa `0105`); raw `01 73 00`: sensor 1 = 75 °C, sensor 2 ausente |
-| `68` | Intake air temperature (2 sensores) | Flags + temperaturas (°C) | 43 / 49 °C | Média | ~6 Hz máx.; sob demanda | Não usado no app (usa `010F`); raw `03 53 59` = 43/49 °C; 4 bytes extras `28 28 28 28` não identificados |
+| `68` | Intake air temperature sensor | Flags + 6 temperaturas (°C) | 43 / 49 °C | Alta | ~6 Hz máx.; sob demanda | Formato de 7 bytes: A=flags, B=B1S1, C=B1S2, D=B1S3, E=B2S1, F=B2S2, G=B2S3; raw `03 53 59 28 28 28 28` = 43/49 °C e 0 °C nos slots não suportados |
 
 ## Dados de identidade e diagnóstico
 
@@ -94,8 +94,8 @@ conjunto: consumo instantâneo não é um PID que capturamos.
 | `0A` | DTCs permanentes | Códigos permanentes | Nenhum | Alta | sob demanda | `4A 00 00` = nenhum |
 | `0101`/`0141` | Readiness | Monitores disponíveis/completos | MIL OFF • O2/cat. pendente | Alta | 0,1–0,2 Hz | `0101 = 00 07 E1 00`; `0141 = 00 05 61 61` |
 | `0200`/`0202`/`020C` | Freeze frame | Snapshot do DTC | — | N/A | — | `NO DATA`; o carro não forneceu freeze frame |
-| `0600` | Mode 06 — suporte | Bitmask de MIDs | suporte bruto | Parcial | sob demanda | Raw `46 00 C0 00 00 01`; suporte existe, decodificação pendente |
-| `0601` | Mode 06 — teste 01 | TID/MID + valores | — (bruto) | Parcial | sob demanda | Resposta multi-frame; log truncado; falta tabela J1979-DA |
+| `0600` | Mode 06 — suporte | Bitmask de MIDs | MIDs 01/02 | Parcial | sob demanda | Raw `46 00 C0 00 00 01`; bits claros para MIDs 01 e 02; o bit final não está mapeado |
+| `0601` | Mode 06 — teste 01 | MID/TID/UAS/valor/min/max | ~450 mV (1º bloco) | Parcial | sob demanda | Blocos de 9 bytes; 1º = MID 01 (O2 B1S1), TID 01, UAS 0x0A; log truncado, lista completa pendente |
 | `ATI` | Identificação do adaptador | Texto | ELM327 v2.1 | Alta | 1×/sessão | `ELM327 v2.1` |
 | `ATDP`/`ATRV`/`ATIGN` | Protocolo / tensão / ignição | Texto/valor | — | N/A | — | Não foram coletados |
 
@@ -109,20 +109,52 @@ conjunto: consumo instantâneo não é um PID que capturamos.
 | Velocidade em km/h | `010D` (A) | 0 km/h | Alta | ~2,5 Hz | Direto |
 | RPM | `(256A+B)/4` de `010C` | 1.100 rpm | Alta | ~2,5 Hz | Direto |
 
-## O que ficou sem identificação completa
+## Itens investigados na internet
 
-| Item | Evidência | Motivo / pendência |
+| Item | O que foi encontrado | Status |
 |---|---|---|
-| Bytes extras do `0168` | Resposta de 9 bytes: `41 68 03 53 59 28 28 28 28` | PID padrão tem 3 bytes de dados; os quatro `28` extras não têm definição clara |
-| Bit `0x02` do `0900` | `49 00 55 40 02 00` | PIDs `02/04/06/08/0A` são claros; o bit `0x02` não mapeia para um PID padrão do Mode 09 |
-| Mode 06 (`0601`) | Resposta multi-frame de 73 bytes, truncada no log | Falta a resposta completa e as tabelas J1979-DA de TIDs/MIDs |
-| Calibration ID completo (`0904`) | Resposta de 99 bytes, truncada no log | Só foi possível ver o contador (`06`) e parte do primeiro ID |
-| `014F` | `00 00 00 00` | Limites máximos vieram zerados; não há valor útil |
-| `0103` | `00 00` | Nenhum estado de fuel system reportado |
-| `010F` | `53` (43 °C) no bench e `00` (-40 °C) em outra leitura | Inconsistência; provável sensor frio/ignição ou ruído, não confirmado |
-| `0151` × `0152` | Tipo `03` (Etanol), etanol `38–40%` | O tipo do combustível e o percentual parecem conflitar |
-| Protocolo do carro | `ATSP0` funcionou | `ATDP` não foi consultado; “CAN 11-bit” é inferência |
-| PIDs do fabricante | Nunca consultados | Mode `21`/`22`/UDS podem expor câmbio, óleo, bateria etc. |
+| Bytes do `0168` | O PID 68 tem **7 bytes de dados**: `A` = flags de sensores, `B` = B1S1, `C` = B1S2, `D` = B1S3, `E` = B2S1, `F` = B2S2, `G` = B2S3. No nosso raw `03 53 59 28 28 28 28`: A=`03` (B1S1+B1S2), B=`53`=43 °C, C=`59`=49 °C; D–G=`28`=0 °C nos slots não suportados. Não eram bytes “extras”. | ✅ Resolvido |
+| `014F` zerado | É **External Test Equipment Configuration Information #1**: limites máximos de lambda, tensão O2, corrente O2 e MAP. Zeros significam “não configurado/Reportado”. | ✅ Formato identificado |
+| `0103` = `00 00` | Fuel system status: `0x00` não é open/closed loop; é reservado/não disponível. O carro não reportou estado de loop. | ✅ Formato identificado |
+| `0151` × `0152` | `0151` é o **tipo** de combustível (enum); `0152` é o **percentual de álcool** medido. Em carro flex os dois podem divergir; o percentual é o dado de mistura. | ✅ Interpretação |
+| Bit `0x02` do `0900` | A máscara padrão do Mode 09 cobre PIDs 01–20. O `0x02` no terceiro byte cairia no PID 23, que não tem definição no Mode 09. Permanece sem significado público; provável bit reservado/específico da ECU. | ⚠️ Pendente |
+| Mode 06 (`0601`) | Formato CAN: blocos de 9 bytes = `MID, TID, UAS, valor(2), mínimo(2), máximo(2)`. Primeiro bloco: MID `01` (O2 B1S1), TID `01`, UAS `0x0A` (0,122 mV/count), valor/min/max = ~450 mV. Os nomes dos TIDs são definidos pelo fabricante. | ⚠️ Parcial (log truncado) |
+| Cal ID (`0904`) | São 6 IDs de 16 caracteres ASCII (contador `06`). O log foi truncado antes do fim. | ⚠️ Pendente de nova captura |
+| `010F` | Bench: `53` = 43 °C; outra leitura: `00` = -40 °C. Não é dúvida de protocolo; é inconsistência da leitura/sensor. | ⚠️ Precisa repetir |
+| Protocolo | `ATSP0` funcionou, mas `ATDP` não foi consultado. “CAN 11-bit” continua inferência. | ⚠️ Pendente |
+| PIDs do fabricante | Nunca consultados. | ⚠️ Pendente |
+
+### Fontes consultadas
+
+- SAE J1979 / OBD-II PIDs — tabela e bitmasks:
+  <https://en.wikipedia.org/wiki/OBD-II_PIDs>
+- DashLogic — detalhamento byte a byte, incluindo PID 68 com 7 bytes e PID 4F:
+  <https://www.dashlogic.com/docs/technical/obdii_pids>
+- python-OBD — formato do Mode 06 e tabela UAS:
+  <https://github.com/brendan-w/python-OBD>
+- Softechpro — PID 0168 retorna 7 bytes de dados:
+  <https://www.softechpro-solutions.com/obd2-pid/0168>
+- CSS Electronics — tabela OBD2/PID:
+  <https://www.csselectronics.com/pages/obd2-pid-table-on-board-diagnostics-j1979>
+
+## Confiabilidade geral
+
+| Bloco | Confiabilidade | Justificativa |
+|---|---|---|
+| PIDs padrão lidos diretamente | **Alta** | Resposta real capturada + fórmula SAE J1979 conhecida |
+| Valores de RPM, velocidade, temperaturas, pressões, tensão e throttle | **Alta** | Fórmula direta e resposta capturada; ressalva apenas para leituras com motor desligado |
+| VIN, nome da ECU e CVNs | **Alta** | Formato multi-frame conhecido e resposta capturada |
+| DTCs e readiness | **Alta** | Formato padrão; o carro respondeu corretamente |
+| Combustível em litros | **Média** | Depende da capacidade assumida do tanque (44 L) |
+| Percentual de gasolina | **Média** | Derivado de `100 - etanol`; não existe PID direto |
+| Tipo de combustível × % etanol | **Média** | São campos diferentes; a interpretação “flex” é plausível, mas não foi confirmada com análise do combustível |
+| Cal ID completo e Mode 06 | **Parcial** | Formato identificado, mas os logs foram truncados |
+| Bit `0x02` do `0900` | **Baixa/pendente** | Não há definição pública clara; provável reservado/ECU |
+| Freeze frame | **N/A** | O carro não respondeu |
+
+> Importante: isso mede a confiança da **decodificação** (o que o byte significa), não a precisão física do sensor. Um ECT de 75 °C pode estar corretamente decodificado e ainda assim o sensor estar descalibrado.
+
+As fontes usadas são secundárias (Wikipedia, DashLogic, python-OBD, CSS Electronics, Softechpro), mas foram cruzadas entre si e com as respostas reais do carro. A norma SAE J1979-DA oficial é paga e não foi consultada.
 
 ## Resumo
 

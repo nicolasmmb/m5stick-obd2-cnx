@@ -174,11 +174,14 @@ Legenda de prioridade:
 | PID | Sigla/nome | Bytes | Fórmula | Unidade | Grupo | Prio |
 |---|---|---|---|---|---|---|
 | `67` | Engine coolant temperature (2 sensores) | 3 | A=flags; `B-40`, `C-40` | °C | temperatura | M |
-| `68` | Intake air temperature (2 sensores) | 3 | A=flags; `B-40`, `C-40` | °C | temperatura | M |
+| `68` | Intake air temperature sensor (6 slots) | 7 | A=flags; `B-40` … `G-40` | °C | temperatura | M |
 
-> Em `67`/`68`, A0= sensor 1 suportado, A1= sensor 2 suportado.
+> Em `67`, A0/B1S1 e A1/B1S2.
+> Em `68`, A0–A5 indicam B1S1, B1S2, B1S3, B2S1, B2S2 e B2S3;
+> B–G são as temperaturas nessa ordem.
 > Neste carro: `67 = 01 73 00` → sensor 1 = 75 °C;
-> `68 = 03 53 59 ...` → sensores 1/2 = 43 °C / 49 °C.
+> `68 = 03 53 59 28 28 28 28` → B1S1/B1S2 = 43/49 °C e slots
+> não suportados em `28` (0 °C).
 
 ## 6. Dados de identidade e diagnóstico
 
@@ -667,13 +670,14 @@ o tipo mostra `FLEX` quando o percentual de etanol está entre 1% e 99%.
 | `0151` | `03` | Etanol |
 | `0152` | `62` | 38,4 % etanol |
 | `0167` | `01 73 00` | ECT sensor 1 = 75 °C |
-| `0168` | `03 53 59` | IAT sensores 1/2 = 43/49 °C |
+| `0168` | `03 53 59 28 28 28 28` | IAT B1S1/B1S2 = 43/49 °C; demais slots em 0 °C |
 
 > Valores variam com motor ligado/desligado, temperatura e combustível.
 
 ## 14. Lacunas e próximos passos
 
-1. **Mode 06**: já temos `0600`/`0601` brutos; falta decodificar TIDs/MIDs.
+1. **Mode 06**: formato já identificado (blocos de 9 bytes: MID/TID/UAS/valor/mín/máx);
+   falta a captura completa e os nomes OEM dos TIDs.
 2. **Freeze frame**: o carro respondeu `NO DATA`; não há snapshot disponível.
 3. **PIDs do fabricante** (`21`/`22` ou UDS): podem revelar câmbio, bateria,
    temperatura de óleo etc., mas exigem definições específicas do modelo.
