@@ -40,6 +40,18 @@ func TestResponseMask(t *testing.T) {
 	}
 }
 
+func TestResponseMaskSecondRange(t *testing.T) {
+	// 0120 response from the car: 41 20 80 07 A0 11 AA.
+	raw := []byte("41208007A011AA>")
+	mask, ok := responseMask(raw, 0x20)
+	if !ok {
+		t.Fatal("mask not found")
+	}
+	if mask != 0x8007A011 {
+		t.Fatalf("mask = %08X", mask)
+	}
+}
+
 func TestAllExpected(t *testing.T) {
 	raw := []byte("410C1AF8410D1E>")
 	if !allExpected(raw, []string{"0C", "0D"}) {

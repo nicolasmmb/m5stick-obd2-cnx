@@ -633,7 +633,7 @@ func resolvePIDs(m *m5, spec string) ([]string, error) {
 }
 
 func responseMask(raw []byte, base byte) (uint32, bool) {
-	needle := []byte{'4', '1', hexDigit(base >> 4), hexDigit(base)}
+	needle := []byte(fmt.Sprintf("41%02X", base))
 	i := bytes.Index(raw, needle)
 	if i < 0 || i+12 > len(raw) {
 		return 0, false
