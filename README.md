@@ -42,6 +42,7 @@ poc/obd2/
   obd-display/     # UI de 3 páginas no LCD
   obd-logger/      # firmware compacto + tela de status/dados
   obd-raw-bridge/  # firmware mínimo: serial ↔ BLE, sem parser
+  obd-raw-simple/  # POC: UI só inicia depois do BLE configurado
 
 cmd/obd-logger/    # loader host: serial compacta/NDJSON legado → CSV
 cmd/obd-logger-v2/ # logger raw do bridge (protocolo HELLO/HB/C/Q/R)
@@ -99,6 +100,7 @@ make test        # testes do loader/parser/sessão
 
 make monitor     # monitor serial apenas
 make raw-bridge  # grava o firmware ponte serial ↔ BLE
+make raw-simple  # POC mínima: UI inicia só após BLE configurado
 make raw-log     # logger raw v2 (HELLO/HB/C/Q/R)
 ```
 

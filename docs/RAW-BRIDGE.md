@@ -93,6 +93,23 @@ UI:
 - heartbeat verde quando `recording`, azul caso contrário;
 - sem páginas, botões ou valores de PID.
 
+## 3.1 POC mínima (`obd-raw-simple`)
+
+Existe uma versão ainda menor em `poc/obd2/obd-raw-simple`:
+
+- sem rings e sem writer goroutine;
+- BLE configurado na main;
+- **UI só é inicializada depois de scan/connect/discover/notify**;
+- 4 linhas: `SERIAL`, `BLE`, `ELM`, `TX`;
+- mesmo protocolo do logger v2.
+
+```bash
+make raw-simple
+```
+
+Essa POC foi validada com o ELM327 real: conectou, fez handshake e recebeu
+`410C0000AAAAAA` para `010C`.
+
 ## 4. Logger v2
 
 ```bash
