@@ -13,6 +13,7 @@ var (
 	errReplay   = &simpleError{"replay mode"}
 	errStop     = &simpleError{"host stop"}
 	errLinkLost = &simpleError{"ble link lost"}
+	errNoDevice = &simpleError{"no OBDII BLE device found"}
 )
 
 type simpleError struct{ s string }
@@ -53,8 +54,9 @@ type Sink interface {
 type pidResult uint8
 
 const (
-	pidOK pidResult = iota
-	pidRetry
+	pidOK    pidResult = iota
+	pidRetry           // got a response, but no usable data: the link is alive
+	pidTimeout
 	pidLinkLost
 )
 
@@ -171,14 +173,16 @@ func (s *Session) Run() error {
 			case pidLinkLost:
 				endReason = "ble_lost"
 				return errLinkLost
-			case pidOK:
-				fails = 0
-			default:
+			case pidTimeout:
 				fails++
 				if fails >= 3 {
 					endReason = "ble_lost"
 					return errLinkLost
 				}
+			default:
+				// OK or NO DATA/PARSE_ERROR: the adapter answered, so the
+				// link is healthy.
+				fails = 0
 			}
 		}
 		cycle++
@@ -192,14 +196,14 @@ func (s *Session) Run() error {
 				case pidLinkLost:
 					endReason = "ble_lost"
 					return errLinkLost
-				case pidOK:
-					fails = 0
-				default:
+				case pidTimeout:
 					fails++
 					if fails >= 3 {
 						endReason = "ble_lost"
 						return errLinkLost
 					}
+				default:
+					fails = 0
 				}
 				s.Clock.Sleep(20 * time.Millisecond)
 			}
@@ -231,7 +235,7 @@ func (s *Session) poll(p pidSpec) pidResult {
 	case ReplyTimeout:
 		s.Sink.Quality(p.pid, obdpid.QualityNoData)
 		s.Sink.Event(ms, "NO_DATA", p.pid)
-		return pidRetry
+		return pidTimeout
 	}
 	if strings.Contains(resp, "NO DATA") {
 		s.Sink.Quality(p.pid, obdpid.QualityNoData)

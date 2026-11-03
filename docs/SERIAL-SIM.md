@@ -102,6 +102,8 @@ make sim FILE=data/... DROP_AFTER=40
 
 `--speed`, `--loop`, `--start` e `--end` não se aplicam ao `--sim`: o
 simulador usa um retrato estático do arquivo (último valor de cada PID).
+PIDs ausentes no arquivo respondem `NO DATA`; isso é uma resposta válida e
+**não** derruba o link (só timeouts contam para a reconexão).
 
 ## Testar reconexão
 

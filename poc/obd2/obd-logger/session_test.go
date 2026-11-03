@@ -195,6 +195,35 @@ func TestSessionStoredDTCs(t *testing.T) {
 	}
 }
 
+func TestSessionNoDataKeepsLinkAlive(t *testing.T) {
+	replies := diagnosticsReplies()
+	for _, cmd := range []string{"010C", "010D", "0111", "0104", "010B", "0110"} {
+		replies[cmd] = fakeReply{text: "NO DATA||>", kind: ReplyOK}
+	}
+	transport := &fakeTransport{replies: replies}
+	sink := &fakeSink{}
+	session := &Session{
+		T:     transport,
+		Sink:  sink,
+		Clock: &fakeClock{},
+		Mode: func() error {
+			// 11 diagnostics commands + 8 polls: enough to prove that
+			// consecutive NO DATA replies do not drop the link.
+			if len(transport.commands) > 19 {
+				return errStop
+			}
+			return nil
+		},
+	}
+
+	if err := session.Run(); err != errStop {
+		t.Fatalf("err = %v, want errStop (link must stay alive)", err)
+	}
+	if sink.end != "host" {
+		t.Fatalf("end = %q, want host", sink.end)
+	}
+}
+
 func TestSessionReplayModeDoesNotStart(t *testing.T) {
 	sink := &fakeSink{}
 	session := &Session{
