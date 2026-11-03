@@ -116,8 +116,11 @@ def add_regimes(df: pl.DataFrame) -> pl.DataFrame:
             & (pl.col("coolant").fill_null(0) >= 70)
         ).alias("normal"),
         (pl.col("coolant").is_not_null() & (pl.col("coolant") < 70)).alias("cold"),
+        pl.col("rpm").is_null().alias("no_data"),
     ).with_columns(
-        pl.when(~pl.col("engine_on"))
+        pl.when(pl.col("no_data"))
+        .then(pl.lit("no_data"))
+        .when(~pl.col("engine_on"))
         .then(pl.lit("engine_off"))
         .when(pl.col("cold") & (pl.col("speed").fill_null(0) == 0))
         .then(pl.lit("idle_cold"))
