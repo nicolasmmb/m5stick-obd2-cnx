@@ -415,8 +415,14 @@ func main() {
 	if err := m.hello(sid); err != nil {
 		log.Fatalf("serial handshake: %v", err)
 	}
+	if *mem {
+		m.mem()
+	}
 	log.Printf("waiting BLE...")
 	if err := m.waitBLE(*bleTimeout); err != nil {
+		if *mem {
+			m.mem()
+		}
 		log.Fatalf("BLE: %v (check the OBD adapter power)", err)
 	}
 	log.Printf("BLE ready; ELM handshake")

@@ -2,6 +2,7 @@ package main
 
 import (
 	"machine"
+	"runtime"
 	"strconv"
 	"sync/atomic"
 	"time"
@@ -39,6 +40,7 @@ var (
 var (
 	rxRing  byteRing
 	logRing byteRing
+	lastGC  time.Time
 )
 
 func nowMs() int64 {
@@ -93,7 +95,7 @@ func drainRX() {
 		atomic.StoreInt64(&lastRxNano, time.Now().UnixNano())
 		elmState = elmRX
 		if hostAlive() {
-			emit("R," + strconv.FormatInt(nowMs(), 10) + "," + hex(buf[:n]))
+			emitR(buf[:n])
 		}
 	}
 }
@@ -135,15 +137,45 @@ func main() {
 			lastState = time.Now()
 			emitState()
 		}
+		if time.Since(lastGC) >= 5*time.Second {
+			lastGC = time.Now()
+			runtime.GC()
+		}
 		time.Sleep(10 * time.Millisecond)
 	}
 }
 
-func hex(p []byte) string {
-	const digits = "0123456789ABCDEF"
-	out := make([]byte, 0, len(p)*2)
-	for _, b := range p {
-		out = append(out, digits[b>>4], digits[b&0x0F])
+func appendInt(dst []byte, v int64) []byte {
+	if v == 0 {
+		return append(dst, '0')
 	}
-	return string(out)
+	var tmp [20]byte
+	n := len(tmp)
+	for v > 0 {
+		n--
+		tmp[n] = byte('0' + v%10)
+		v /= 10
+	}
+	return append(dst, tmp[n:]...)
+}
+
+func emitR(p []byte) {
+	const digits = "0123456789ABCDEF"
+	var buf [1024]byte
+	n := 0
+	n += copy(buf[n:], "R,")
+	n = len(appendInt(buf[:n], nowMs()))
+	buf[n] = ','
+	n++
+	for _, b := range p {
+		if n+2 > len(buf)-1 {
+			break
+		}
+		buf[n] = digits[b>>4]
+		buf[n+1] = digits[b&0x0F]
+		n += 2
+	}
+	buf[n] = '\n'
+	n++
+	logRing.write(buf[:n])
 }

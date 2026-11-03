@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-var hostBuf [1024]byte
+var hostBuf [512]byte
 var hostN int
 
 func serialWriter() {

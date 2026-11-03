@@ -198,4 +198,5 @@ Verificar:
 - `ELM=RX` significa “chegou resposta”, não “OK”;
 - o BLE pode reconectar, mas o `Deinit` do `espradio` não existe;
 - multi-PID é opcional e dependente do adaptador;
-- a UI não mostra valores de PID.
+- a UI não mostra valores de PID;
+- `C,MEM` reporta heap; use `--mem-every 10s` para acompanhar.

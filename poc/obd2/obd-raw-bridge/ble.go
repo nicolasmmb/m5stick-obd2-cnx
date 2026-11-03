@@ -1,8 +1,8 @@
 package main
 
 import (
+	"runtime"
 	"strconv"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -74,6 +74,7 @@ func bleLoop() {
 		l, err := openBLE()
 		if err != nil {
 			emit("ERR," + strconv.FormatInt(nowMs(), 10) + ",BLE," + err.Error())
+			runtime.GC()
 			time.Sleep(backoff)
 			if backoff < 10*time.Second {
 				backoff *= 2
@@ -105,6 +106,22 @@ func bleLoop() {
 	}
 }
 
+func containsOBD(s string) bool {
+	for i := 0; i+2 < len(s); i++ {
+		if lowerASCII(s[i]) == 'o' && lowerASCII(s[i+1]) == 'b' && lowerASCII(s[i+2]) == 'd' {
+			return true
+		}
+	}
+	return false
+}
+
+func lowerASCII(c byte) byte {
+	if c >= 'A' && c <= 'Z' {
+		return c + ('a' - 'A')
+	}
+	return c
+}
+
 func openBLE() (*bleLink, error) {
 	adapter.StopScan()
 	time.Sleep(150 * time.Millisecond)
@@ -119,7 +136,7 @@ func openBLE() (*bleLink, error) {
 		if found {
 			return
 		}
-		if r.HasServiceUUID(uuidFFF0) || strings.Contains(strings.ToLower(r.LocalName()), "obd") {
+		if r.HasServiceUUID(uuidFFF0) || containsOBD(r.LocalName()) {
 			addr = r.Address
 			found = true
 			adapter.StopScan()

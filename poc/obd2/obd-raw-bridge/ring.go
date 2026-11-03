@@ -5,7 +5,7 @@ import "sync/atomic"
 // byteRing is a fixed single-producer/single-consumer ring. It never
 // allocates; if full, the producer drops the new bytes.
 type byteRing struct {
-	buf     [4096]byte
+	buf     [2048]byte
 	head    uint32
 	tail    uint32
 	dropped uint32
