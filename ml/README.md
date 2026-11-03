@@ -21,6 +21,11 @@ uv run obdml --source data --data ../data --out reports
 # com benchmark de falhas sintéticas
 uv run obdml --source data --data ../data --out reports --synthetic
 
+# raw_elm.log do bridge (Q/R), sem converter para CSV
+uv run obdml --source raw \
+  --file ../data/<sessão>/raw_elm.log \
+  --train-data ../data --out reports
+
 # valores injetados (CSV longo ou wide)
 uv run obdml --source inject --file injected.csv --train-data ../data --out reports
 

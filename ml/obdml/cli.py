@@ -14,6 +14,7 @@ from .detect.synthetic import evaluate as synthetic_evaluate
 from .features import add_features
 from .ingest.files import load_sessions as load_raw_sessions
 from .ingest.inject import load_injected
+from .ingest.raw import load_raw_log
 from .ingest.serial import read_serial_session
 from .report import write_index, write_session_report, write_synthetic
 
@@ -135,6 +136,23 @@ def run_inject(args) -> int:
     return 0
 
 
+def run_raw(args) -> int:
+    raw = load_raw_log(args.file)
+    session = build_session(raw)
+    session.df = add_features(session.df)
+
+    train_sessions = _prepare(
+        [build_session(r) for r in load_raw_sessions(args.train_data or args.data)]
+    )
+    if not train_sessions:
+        print("warning: no training data; fitting on the raw session")
+        train_sessions = [session]
+    model = _fit(train_sessions, args.regime, args.min_coverage)
+    out = Path(args.out)
+    _report_session(session, model, out, args.windows, args.top)
+    return 0
+
+
 def run_serial(args) -> int:
     raw = read_serial_session(args.port, seconds=args.seconds, follow=args.follow)
     if raw is None:
@@ -161,7 +179,7 @@ def run_serial(args) -> int:
 
 def parse_args(argv: list[str] | None = None):
     parser = argparse.ArgumentParser(description="OBD-II unsupervised anomaly analysis")
-    parser.add_argument("--source", choices=["data", "inject", "serial"], default="data")
+    parser.add_argument("--source", choices=["data", "inject", "raw", "serial"], default="data")
     parser.add_argument("--data", default=_default_data_dir(), help="sessions directory")
     parser.add_argument("--file", help="injected CSV/NDJSON")
     parser.add_argument("--port", help="serial port for --source serial")
@@ -189,6 +207,10 @@ def main(argv: list[str] | None = None) -> int:
         if not args.file:
             raise SystemExit("--file is required for --source inject")
         return run_inject(args)
+    if args.source == "raw":
+        if not args.file:
+            raise SystemExit("--file is required for --source raw")
+        return run_raw(args)
     if args.source == "serial":
         if not args.port:
             raise SystemExit("--port is required for --source serial")
