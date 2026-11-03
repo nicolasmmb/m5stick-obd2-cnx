@@ -4,8 +4,9 @@ TINYGO ?= tinygo
 FILE ?= testdata/obd-logger-sample-compact.txt
 SPEED ?= 1
 DROP_AFTER ?= 0
+ML_OUT ?= reports
 
-.PHONY: build check test logger log replay replay-device sim hello wifi ble display obd obd-client obd-bench obd-tune obd-logger obd-probe monitor clean
+.PHONY: build check test logger log replay replay-device sim ml ml-test hello wifi ble display obd obd-client obd-bench obd-tune obd-logger obd-probe monitor clean
 
 build:
 	$(TINYGO) build -target=$(TARGET) -size short -o /tmp/m5-hello.bin ./examples/hello
@@ -39,6 +40,12 @@ replay: logger
 
 replay-device:
 	go run ./cmd/obd-replay --port=$(PORT) --file=$(FILE) --speed=$(SPEED)
+
+ml:
+	cd ml && uv run obdml --source data --data $(CURDIR)/data --out $(ML_OUT)
+
+ml-test:
+	cd ml && uv run pytest
 
 sim:
 	go run ./cmd/obd-replay --sim --port=$(PORT) --file=$(FILE) --drop-after=$(DROP_AFTER)

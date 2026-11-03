@@ -272,6 +272,7 @@ firmware para o scan, encerra a conexão e não usa mais o adaptador até um nov
 - [P1 — robustez](P1-ROBUSTNESS.md)
 - [P1 — checklist de hardware](P1-HARDWARE-CHECKLIST.md)
 - [P2 — snapshots](P2-SNAPSHOTS.md)
+- [Pipeline ML no PC](../ml/README.md)
 - [Simulador serial](SERIAL-SIM.md)
 - [Plano de otimização](OPTIMIZATION-PLAN.md)
 - [Formato do logger](OBD2-LOGGER-FORMAT.md)

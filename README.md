@@ -44,6 +44,7 @@ poc/obd2/
 
 cmd/obd-logger/    # loader host: serial compacta/NDJSON legado → CSV
 internal/obdlog/   # parser compacto/NDJSON, CSV long/wide e metadados
+ml/                # análise host: Polars, matrix profile, PCA/Mahalanobis
 testdata/          # amostras compacta e NDJSON para replay
 
 examples/
@@ -143,6 +144,22 @@ make sim FILE=data/<sessão>/raw.log DROP_AFTER=40  # testa reconexão
 O `--sim` roda o **mesmo loop live** do firmware (handshake, polling, DTCs,
 reconexão) usando respostas sintéticas pela serial. Detalhes em
 **[docs/SERIAL-SIM.md](docs/SERIAL-SIM.md)**.
+
+## Análise no PC (ML)
+
+O M5 não faz cálculo de ML. O pipeline host lê `data/`, serial ou valores
+injetados e roda **matrix profile + PCA/Mahalanobis** sem labels:
+
+```bash
+cd ml
+uv sync
+uv run obdml --source data --data ../data --out reports
+uv run obdml --source data --data ../data --out reports --synthetic
+uv run pytest
+```
+
+Saída em `ml/reports/` (gitignored): `summary.md`, `anomalies.csv`,
+`matrix_profile.csv` e PNGs. Detalhes em **[ml/README.md](ml/README.md)**.
 
 Ou direto:
 
