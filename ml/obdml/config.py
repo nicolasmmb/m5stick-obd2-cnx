@@ -94,23 +94,80 @@ def is_fast_pid(pid: str) -> bool:
     return pid in FAST_PIDS
 
 
-def feature_label(name: str) -> str:
-    labels = {
-        "accel": "aceleração (m/s²)",
-        "jerk": "jerk (m/s³)",
-        "rpm_per_speed": "RPM / velocidade",
-        "load_per_rpm": "carga / RPM",
-        "maf_per_load": "MAF / carga",
-        "map_baro_ratio": "MAP / baro",
-        "pedal_diff": "pedal D − pedal E",
-        "throttle_per_pedal": "borboleta / pedal",
-        "coolant_slope": "derivada coolant",
-        "catalyst_slope": "derivada catalisador",
-        "voltage_slope": "derivada tensão",
-    }
+
+# Nomes legíveis para relatórios e gráficos.
+FEATURE_LABELS = {
+    "rpm": ("RPM (rotações por minuto)", "RPM"),
+    "speed": ("velocidade do veículo", "velocidade"),
+    "load": ("carga calculada do motor", "carga"),
+    "throttle": ("posição da borboleta", "borboleta"),
+    "map": ("pressão absoluta do coletor (MAP)", "MAP"),
+    "maf": ("fluxo de ar admitido (MAF)", "MAF"),
+    "lambda": ("razão ar/combustível (lambda)", "lambda"),
+    "stft": ("correção de combustível de curto prazo (STFT)", "STFT"),
+    "ltft": ("correção de combustível de longo prazo (LTFT)", "LTFT"),
+    "coolant": ("temperatura do líquido de arrefecimento", "coolant"),
+    "catalyst": ("temperatura do catalisador", "catalisador"),
+    "voltage": ("tensão da bateria/rede", "tensão"),
+    "fuel_pct": ("nível de combustível", "combustível"),
+    "relative_throttle": ("borboleta relativa", "borb. relativa"),
+    "pedal_d": ("pedal D (posição do acelerador)", "pedal D"),
+    "pedal_e": ("pedal E (posição do acelerador)", "pedal E"),
+    "commanded_throttle": ("borboleta comandada", "borb. comandada"),
+    "baro": ("pressão barométrica", "baro"),
+    "ethanol": ("teor de etanol no combustível", "etanol"),
+    "ambient": ("temperatura ambiente", "ambiente"),
+    "intake": ("temperatura do ar admitido (IAT)", "IAT"),
+    "accel": ("aceleração do veículo", "aceleração"),
+    "jerk": ("variação da aceleração (jerk)", "jerk"),
+    "rpm_per_speed": ("RPM dividido pela velocidade", "RPM/velocidade"),
+    "load_per_rpm": ("carga dividida pelo RPM", "carga/RPM"),
+    "maf_per_load": ("MAF dividido pela carga", "MAF/carga"),
+    "map_baro_ratio": ("MAP dividido pela pressão barométrica", "MAP/baro"),
+    "pedal_diff": ("diferença entre pedal D e pedal E", "pedal D − E"),
+    "throttle_per_pedal": ("borboleta dividida pelo pedal", "borboleta/pedal"),
+    "coolant_slope": ("variação do coolant por segundo", "Δ coolant"),
+    "catalyst_slope": ("variação do catalisador por segundo", "Δ catalisador"),
+    "voltage_slope": ("variação da tensão por segundo", "Δ tensão"),
+}
+
+GLOSSARY = [
+    ("OBD-II", "padrão de diagnóstico de bordo do carro"),
+    ("ECU", "unidade de controle do motor"),
+    ("PID", "parâmetro identificado do OBD-II"),
+    ("CAN", "rede interna do carro"),
+    ("RPM", "rotações por minuto do motor"),
+    ("MAF", "fluxo de massa de ar admitido"),
+    ("MAP", "pressão absoluta do coletor de admissão"),
+    ("IAT", "temperatura do ar admitido"),
+    ("ECT", "temperatura do líquido de arrefecimento"),
+    ("pedal D/E", "sensores redundantes da posição do acelerador"),
+    ("STFT", "correção de combustível de curto prazo"),
+    ("LTFT", "correção de combustível de longo prazo"),
+    ("coolant", "temperatura do líquido de arrefecimento (ECT)"),
+    ("lambda", "razão ar/combustível normalizada"),
+    ("AFR", "razão ar/combustível"),
+    ("DTC", "código de falha de diagnóstico"),
+    ("MIL", "luz de anomalia do painel (check engine)"),
+    ("readiness", "status dos monitores de emissão"),
+    ("VIN", "número de identificação do veículo"),
+    ("BLE", "Bluetooth Low Energy"),
+]
+
+
+def feature_label(name: str, short: bool = False) -> str:
     if name.startswith("flat_"):
-        return f"{name[5:]} travado (std 10 s)"
-    if name in labels:
-        return labels[name]
+        base = feature_label(name[5:], short=True)
+        return f"{base} sem variação (10 s)"
+    if name.startswith("age_"):
+        base = feature_label(name[4:], short=True)
+        return f"idade de {base}"
+    pair = FEATURE_LABELS.get(name)
+    if pair:
+        return pair[1] if short else pair[0]
     unit = PID_UNITS.get(name, "")
     return f"{name} ({unit})" if unit else name
+
+
+def format_features(expr: str) -> str:
+    return ", ".join(feature_label(x.strip()) for x in expr.split(";") if x.strip())

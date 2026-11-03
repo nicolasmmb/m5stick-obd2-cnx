@@ -13,6 +13,7 @@ import numpy as np
 import polars as pl
 from matplotlib.patches import Patch
 
+from .config import GLOSSARY, PID_NAMES, PID_UNITS, feature_label, format_features
 from .dataset import Session
 
 REGIME_COLORS = {
@@ -108,7 +109,10 @@ def _score_plot(
         for r in top.head(3).iter_rows(named=True):
             x = r["ms"] / 1000.0
             y = r["score"]
-            label = f"{_mmss(r['ms'])} · {r.get('regime', '-')}\n{r['top_features'].split(';')[0]}"
+            label = (
+                f"{_mmss(r['ms'])} · {r.get('regime', '-')}\n"
+                f"{feature_label(r['top_features'].split(';')[0], short=True)}"
+            )
             ax.annotate(
                 label,
                 (x, y),
@@ -170,10 +174,10 @@ def _signals_plot(
     top_x = top["ms"].to_numpy() / 1000.0 if not top.is_empty() else np.array([])
 
     panels = [
-        ("maf", "MAF (g/s)", "maf"),
-        ("map", "MAP (kPa)", "map"),
-        ("pedal_d", "Pedal D / E (%)", "pedal_d"),
-        ("coolant", "Coolant (°C)", "coolant"),
+        ("maf", "MAF — fluxo de ar (g/s)", "maf"),
+        ("map", "MAP — pressão do coletor (kPa)", "map"),
+        ("pedal_d", "Pedal D/E — acelerador (%)", "pedal_d"),
+        ("coolant", "Coolant — temp. do líquido (°C)", "coolant"),
     ]
     fig, axes = plt.subplots(2, 2, figsize=(11, 6.2), sharex=True, constrained_layout=True)
     for ax, (column, label, kind) in zip(axes.flat, panels):
@@ -187,9 +191,17 @@ def _signals_plot(
             ax.legend(loc="upper right", fontsize=7)
         else:
             ax.plot(ms, df[column].to_numpy(), lw=0.9, color="#2ca02c")
-        for x in top_x:
-            ax.axvline(x, color="#d62728", alpha=0.25, lw=0.7)
+        for i, x in enumerate(top_x):
+            ax.axvline(
+                x,
+                color="#d62728",
+                alpha=0.25,
+                lw=0.7,
+                label="top 5 anomalias" if i == 0 else None,
+            )
         ax.set_ylabel(label)
+        if len(top_x):
+            ax.legend(loc="upper right", fontsize=7)
         ax.grid(alpha=0.25)
         ax.set_xlim(0, max_ms / 1000.0)
         ax.xaxis.set_major_formatter(mticker.FuncFormatter(_time_fmt))
@@ -213,6 +225,42 @@ def _plot(session: Session, anomalies: pl.DataFrame, out_dir: Path) -> list[str]
     ]
 
 
+def _glossary_md(df: pl.DataFrame) -> str:
+    lines = ["| Sigla | Significado |", "|---|---|"]
+    lines += [f"| {a} | {b} |" for a, b in GLOSSARY]
+    lines += ["", "### PIDs usados nesta sessão", "", "| PID | Nome | Unidade |", "|---|---|---|"]
+    lines += [
+        f"| `{pid}` | {feature_label(name)} | {PID_UNITS.get(name, '-')} |"
+        for pid, name in PID_NAMES.items()
+        if name in df.columns
+    ]
+    lines += [
+        "",
+        "### Como ler os campos",
+        "",
+        "| Campo | Significado |",
+        "|---|---|",
+        "| `score` | maior valor entre `recon_z`, `mahal_z` e missing; quanto maior, mais fora do normal |",
+        "| `recon_z` | erro de reconstrução do PCA, em z-score robusto |",
+        "| `mahal_z` | distância de Mahalanobis; outlier multivariado |",
+        "| `regime` | `engine_off`, `idle`, `idle_cold`, `moving_cold`, `moving_warm` ou `no_data` |",
+        "| `NO_DATA` | o PID não respondeu naquela consulta |",
+        "| `PARSE_ERROR` | a resposta do adaptador veio em formato inválido |",
+        "",
+        "### Regimes",
+        "",
+        "| Regime | Significado |",
+        "|---|---|",
+        "| `engine_off` | motor desligado |",
+        "| `idle` | motor ligado e carro parado |",
+        "| `idle_cold` | marcha lenta com coolant abaixo de 70 °C |",
+        "| `moving_cold` | carro andando com coolant abaixo de 70 °C |",
+        "| `moving_warm` | carro andando com coolant em 70 °C ou mais |",
+        "| `no_data` | sem leitura de RPM; normalmente perda de link |",
+    ]
+    return "\n".join(lines)
+
+
 def write_session_report(
     session: Session,
     anomalies: pl.DataFrame,
@@ -230,7 +278,7 @@ def write_session_report(
 
     top = anomalies.sort("score", descending=True).head(10)
     top_rows = "\n".join(
-        f"| {_mmss(r['ms'])} | {r['ms']} | {r.get('regime', '-')} | {r['score']:.2f} | {r['top_features']} |"
+        f"| {_mmss(r['ms'])} | {r['ms']} | {r.get('regime', '-')} | {r['score']:.2f} | {format_features(r['top_features'])} |"
         for r in top.iter_rows(named=True)
     )
     if not top_rows:
@@ -238,7 +286,7 @@ def write_session_report(
 
     disc = mp.filter(pl.col("kind") == "discord").sort("score", descending=True).head(10)
     disc_rows = "\n".join(
-        f"| {r['signal']} | {r['window_s']} s | {_mmss(r['start_ms'])} | {r['score']:.2f} |"
+        f"| {feature_label(r['signal'])} | {r['window_s']} s | {_mmss(r['start_ms'])} | {r['score']:.2f} |"
         for r in disc.iter_rows(named=True)
     )
     if not disc_rows:
@@ -288,6 +336,10 @@ def write_session_report(
 | tipo | quantidade |
 |---|---:|
 {ev_rows or '| - | - |'}
+
+## Glossário
+
+{_glossary_md(df)}
 
 ## Gráficos
 
