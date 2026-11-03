@@ -1,3 +1,5 @@
+//go:build tinygo
+
 package main
 
 import (
@@ -14,6 +16,7 @@ const (
 	ModeLive Mode = iota
 	ModeReplay
 	ModePaused
+	ModeSim
 )
 
 var appMode = ModeLive
@@ -61,9 +64,13 @@ func (s *SerialLink) Poll() {
 		if i < 0 {
 			break
 		}
-		line, ok := obdline.Parse(s.buf[:i])
-		if ok {
-			s.handle(line)
+		line := s.buf[:i]
+		if len(line) >= 2 && line[0] == 'S' && line[1] == ',' {
+			// Simulated ELM response. The slice points into s.buf, which is
+			// still valid here; simReply copies it.
+			simReply(string(line[2:]))
+		} else if l, ok := obdline.Parse(line); ok {
+			s.handle(l)
 		} else {
 			s.invalid++
 		}
@@ -81,7 +88,6 @@ func (s *SerialLink) handle(line obdline.Line) {
 		emitEnd("replay")
 		appMode = ModeReplay
 		resetReplayValues()
-		uiPaused = false
 		page = 1
 		dirtyAll = true
 		bleState = bleOff
@@ -96,11 +102,22 @@ func (s *SerialLink) handle(line obdline.Line) {
 		bleStopScan()
 		emitEnd("host")
 		appMode = ModePaused
-		uiPaused = false
 		dirtyAll = true
 		bleState = bleOff
 		elmState = elmWait
 		println("K,STOP")
+	case obdline.KindSim:
+		bleStopScan()
+		emitEnd("sim")
+		appMode = ModeSim
+		resetReplayValues()
+		page = 1
+		dirtyAll = true
+		bleState = bleOff
+		elmState = elmWait
+		println("K,SIM")
+	case obdline.KindMem:
+		printMem("mem")
 	case obdline.KindClear:
 		resetReplayValues()
 	case obdline.KindRecord:

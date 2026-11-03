@@ -1,6 +1,7 @@
 # P1 — robustez do modo live
 
-> Implementado sobre a `main` (P0 validado, exceto a sessão longa no carro).
+> Status: **implementado; validação de hardware em backlog**.
+> P0 concluído com o carro.
 > Escopo: reconexão BLE, encerramento explícito (`X`) e diagnóstico
 > (DTCs/readiness) no logger.
 
@@ -13,11 +14,13 @@ O polling distingue três resultados:
 | Resultado | Quando | Ação |
 |---|---|---|
 | `pidOK` | resposta válida | zera o contador de falhas |
-| `pidRetry` | `NO DATA`, `PARSE_ERROR` ou timeout | incrementa o contador |
+| `pidRetry` | `NO DATA`/`PARSE_ERROR` | zera o contador: o adaptador respondeu |
+| `pidTimeout` | sem resposta dentro de 2 s | incrementa o contador |
 | `pidLinkLost` | `WriteWithoutResponse` falhou | encerra a sessão imediatamente |
 
-Três falhas consecutivas (`pidRetry`) também encerram a sessão: um adaptador
-fora de alcance normalmente para de responder antes de a escrita falhar.
+Três **timeouts** consecutivos também encerram a sessão: um adaptador fora de
+alcance normalmente para de responder antes de a escrita falhar. `NO DATA` é
+uma resposta válida (PID não suportado), então **não** derruba o link.
 
 ### Backoff
 
@@ -108,28 +111,52 @@ primeiro byte é a contagem, não um código. Respostas multi-frame
 
 ## 4. Validação
 
-- `go test ./internal/... ./cmd/...` ✅
-- `go vet ./internal/... ./cmd/...` ✅
+- `go test ./internal/... ./cmd/... ./poc/obd2/obd-logger` ✅
+- `go vet` nos mesmos pacotes ✅
 - `tinygo build -target=m5stick-c -size short` ✅
   - antes: flash 302.356 / RAM 59.028
-  - depois: flash 307.844 / RAM 59.084
+  - depois (P1): flash 307.844 / RAM 59.084
+  - com o simulador serial: flash 321.488 / RAM 62.924
 - `gopls check` no firmware ✅
 
-Pendente de hardware:
+A lógica de sessão agora roda no host contra um `Transport` fake
+(`session_test.go`), com respostas reais dos logs:
 
-- derrubar o adaptador e confirmar `X,ble_lost` + reconexão + beeps;
-- Ctrl-C e confirmar `X,host` e `BLE=OFF`;
-- carro com DTC/readiness para validar os códigos reais.
+- VIN multi-frame;
+- `0101`/`03`/`07`/`0A` → MIL, contagem, readiness e códigos;
+- 3 timeouts → `errLinkLost` + `X,ble_lost`;
+- erro de escrita → link perdido imediato;
+- `C,STOP`/modo → `X,host`.
+
+Validação no Stick sem BLE: ver [SERIAL-SIM.md](SERIAL-SIM.md).
+
+Validado em hardware:
+
+- a UI continua atualizando durante o `Connect` do BLE (sem pausa);
+- os dados continuam sendo gravados em `data/`.
+
+Backlog de hardware (P1):
+
+- derrubar o adaptador e confirmar reconexão + beeps;
+- Ctrl-C e confirmar `BLE=OFF`;
+- carro com DTC/readiness para validar os códigos reais;
+- `seq`/`session_id` no protocolo.
 
 ## 5. Arquivos
 
 ```text
-internal/obdline/line.go          # C,STOP
-internal/obddtc/                  # DTC + readiness (novo pacote)
-internal/obdlog/loader.go         # resumo em metadata.json
-cmd/obd-logger/main.go            # C,STOP no shutdown
-poc/obd2/obd-logger/live.go       # detecção, reconexão, diagnóstico
-poc/obd2/obd-logger/main.go       # backoff e relógio monotônico
-poc/obd2/obd-logger/buzzer.go     # beeps do backoff (novo)
-poc/obd2/obd-logger/serial_link.go# ModePaused
+internal/obdline/line.go            # C,STOP / C,SIM
+internal/obddtc/                    # DTC + readiness
+internal/obdlog/loader.go           # resumo em metadata.json
+cmd/obd-logger/main.go              # C,STOP no shutdown
+cmd/obd-replay/sim.go               # simulador Q/S
+poc/obd2/obd-logger/session.go      # loop live sem BLE
+poc/obd2/obd-logger/transport.go    # interface Transport
+poc/obd2/obd-logger/transport_ble.go# BLE
+poc/obd2/obd-logger/transport_sim.go# simulador serial
+poc/obd2/obd-logger/sink_tinygo.go  # saída I/P/E/X + UI
+poc/obd2/obd-logger/main.go         # backoff e seleção de transporte
+poc/obd2/obd-logger/buzzer.go       # beeps do backoff
+poc/obd2/obd-logger/serial_link.go  # C,SIM / S,<resposta>
+poc/obd2/obd-logger/session_test.go # testes no host
 ```

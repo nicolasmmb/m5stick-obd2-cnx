@@ -2,7 +2,7 @@
 
 ## Objetivo
 
-Enviar uma gravação (`raw.log`) para o M5Stick e renderizar as 6 páginas como
+Enviar uma gravação (`raw.log`) para o M5Stick e renderizar as 7 páginas como
 se o carro estivesse conectado, sem BLE/OBD2.
 
 ## Fluxo
@@ -20,6 +20,7 @@ raw.log → cmd/obd-replay → serial 115200 → M5Stick REPLAY → cache → UI
 | `C,LIVE` | sai do replay e retoma BLE |
 | `C,CLEAR` | limpa o cache |
 | `C,STOP` | emite `X,<ms>,host` e pausa o BLE |
+| `C,SIM` | entra no simulador serial (ver [SERIAL-SIM.md](SERIAL-SIM.md)) |
 | `R,<registro>` | injeta um registro compacto |
 
 ## Handshake
@@ -62,7 +63,13 @@ X,<ms>,<reason>
 ```text
 LIVE  → BLE ativo, scheduler de PIDs, UI + logger
 REPLAY → BLE pausado, comandos R,... atualizam o cache, UI ativa
+SIM   → BLE pausado, loop live real respondendo Q/S pela serial
 ```
+
+No modo `SIM` o firmware não injeta valores no cache: ele roda o mesmo
+`Session.Run()` do modo live, perguntando `Q,<cmd>` e recebendo
+`S,<resposta>`. É a forma de validar reconexão, `X`, DTCs e readiness sem
+BLE/carro.
 
 ## UI
 
@@ -94,6 +101,10 @@ Flags:
 | `--verbose` | mostra cada linha |
 | `--reset` | pulsa o reset antes do replay (padrão: ligado) |
 | `--echo` | mostra a saída da serial do Stick |
+| `--sim` | roda o loop live contra o simulador serial |
+| `--drop-after` | `--sim`: para de responder após N comandos |
+| `--drop-for` | `--sim`: tempo sem responder (padrão 10 s) |
+| `--mil` / `--dtcs` / `--readiness` | `--sim`: diagnóstico sintético |
 
 ## Arquitetura
 
@@ -112,7 +123,7 @@ Firmware
 
 ## Critérios de aceite
 
-- uma gravação atualiza as 6 páginas;
+- uma gravação atualiza as 7 páginas;
 - `C,LIVE` retorna ao scan BLE;
 - linha inválida não trava o firmware;
 - `SERIAL` fica OK com ACK;

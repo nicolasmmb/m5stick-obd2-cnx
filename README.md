@@ -16,10 +16,11 @@ dados do carro no LCD.
 | BLE GATT no ELM327 | ✅ `FFF0/FFF1/FFF2` |
 | Handshake ELM327 | ✅ `ELM327 v2.1` |
 | PIDs Mode 01 | ✅ 43 suportados |
-| UI OBD2 | ✅ 6 páginas, sem flicker/ghosting |
+| UI OBD2 | ✅ 7 páginas, sem flicker/ghosting |
 | Data loader | ✅ serial compacta → CSV long/wide; replay testado |
 | Reconexão BLE | ✅ backoff 1/2/5/10 s + beeps (validar no hardware) |
 | DTCs/readiness | ✅ eventos `E` + resumo em `metadata.json` |
+| Simulação serial | ✅ loop live sem BLE (`--sim`) |
 | taxa | ~5–7 Hz por PID; varredura completa ~7,2 s |
 
 ## Hardware
@@ -56,6 +57,7 @@ docs/
   OBD2-DECODED-DATA.md
   ml/PROJECT-IDEAS.md
   PROJECT-STATUS.md  # status atual e próximos passos
+  P2-SNAPSHOTS.md    # próximo passo: snapshots com qualidade/idade
   logger/            # documentação de cada arquivo do data loader
   ui-layout.md       # grade e páginas da tela
   hardware/          # notas técnicas de display, sensores e Units
@@ -89,7 +91,8 @@ make hello       # smoke test
 make logger      # compila o loader Go em /tmp/obd-logger
 make log         # lê a serial e grava em data/
 make replay      # testa o loader com testdata/obd-logger-sample-compact.txt
-make test        # testes do loader/parser
+make sim         # loop live via serial, sem BLE/carro
+make test        # testes do loader/parser/sessão
 
 make monitor     # monitor serial apenas
 ```
@@ -133,7 +136,13 @@ Teste sem carro:
 ```bash
 make replay       # usa testdata/obd-logger-sample-compact.txt
 make replay-device FILE=data/<sessão>/raw.log  # envia replay ao Stick
+make sim FILE=data/<sessão>/raw.log            # loop live sem BLE
+make sim FILE=data/<sessão>/raw.log DROP_AFTER=40  # testa reconexão
 ```
+
+O `--sim` roda o **mesmo loop live** do firmware (handshake, polling, DTCs,
+reconexão) usando respostas sintéticas pela serial. Detalhes em
+**[docs/SERIAL-SIM.md](docs/SERIAL-SIM.md)**.
 
 Ou direto:
 
@@ -158,6 +167,7 @@ go run ./cmd/obd-logger --replay=testdata/obd-logger-sample-compact.txt --out=da
 | 4 | carga, borboleta, lambda | `0104`, `0111`, `0144` |
 | 5 | tensão, MIL, DTCs | `0142`, `0101`, Mode `03` |
 | 6 | distância, combustível usado, consumo | derivado de `010D`/`012F` |
+| 7 | pedal D, pedal E, borboleta relativa | `0149`, `014A`, `0145` |
 
 - **A** = próxima página; **B** = anterior.
 - Litros: `raw_2F / 255 * capacidade`. O padrão é **44,0 L**
@@ -221,7 +231,7 @@ Detalhes em **[docs/P1-ROBUSTNESS.md](docs/P1-ROBUSTNESS.md)**.
 | obd-bench | 300 KB | 19,3 KB |
 | obd-tune | 295 KB | 19,3 KB |
 | obd-display | 292 KB | 72,8 KB (16,2 KB de framebuffer) |
-| obd-logger | 301 KB | 57,7 KB (16,2 KB de framebuffer) |
+| obd-logger | 314 KB | 61,4 KB (16,2 KB de framebuffer) |
 
 ## Ambiente
 

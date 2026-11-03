@@ -1,3 +1,5 @@
+//go:build tinygo
+
 package main
 
 import (
@@ -70,7 +72,8 @@ var (
 	tripKm        float64
 	tripFuelStart float64
 	tripLast      time.Time
-	uiPaused      bool
+
+	frameSnap = snapshots.Current()
 
 	dirtyTiles    uint16
 	dirtyAll      bool
@@ -180,15 +183,30 @@ func initButtons() {
 	lastBState = machine.GPIO39.Get()
 }
 
+// reading always comes from one published snapshot, so every tile in a frame
+// sees the same instant and the same quality rules.
 func reading(pid string) (obdpid.Reading, bool) {
-	r, ok := readingStore.Get(pid)
+	snap := frameSnap
+	if snap == nil {
+		snap = snapshots.Current()
+	}
+	slot, ok := snap.Get(pidKey16(pid))
 	if !ok {
 		return obdpid.Reading{}, false
 	}
-	if r.Quality == obdpid.QualityOK && r.AgeMs(time.Now()) > 3000 {
-		r.Quality = obdpid.QualityStale
+	q := slot.Quality
+	if q == obdpid.QualityOK && liveMs()-int64(slot.AtMs) > 3000 {
+		q = obdpid.QualityStale
 	}
-	return r, true
+	return obdpid.Reading{PID: pid, Value: slot.Value, Quality: q}, true
+}
+
+func pidKey16(pid string) uint16 {
+	var k uint16
+	for i := 0; i < len(pid) && i < 2; i++ {
+		k = k<<8 | uint16(pid[i])
+	}
+	return k
 }
 
 func readingNumber(pid string) (float64, bool) {
@@ -284,15 +302,12 @@ func handleButtons() bool {
 func uiLoop() {
 	for {
 		serialLink.Poll()
-		if uiPaused {
-			time.Sleep(12 * time.Millisecond)
-			continue
-		}
 		if handleButtons() {
 			dirtyAll = true
 		}
 
 		now := time.Now()
+		frameSnap = snapshots.Current()
 		if now.Sub(lastStatusUI) >= 500*time.Millisecond {
 			lastStatusUI = now
 			if page == 0 {
@@ -373,6 +388,15 @@ func markPIDDirty(pid string) {
 			markTile(5, 0)
 			markTile(5, 1)
 			markTile(5, 2)
+		}
+	case 6:
+		switch pid {
+		case "49":
+			markTile(6, 0)
+		case "4A":
+			markTile(6, 1)
+		case "45":
+			markTile(6, 2)
 		}
 	}
 }
@@ -460,6 +484,8 @@ func composePage() {
 		drawDiagnosticsPage()
 	case 5:
 		drawTripPage()
+	case 6:
+		drawPedalPage()
 	}
 	drawPageDots()
 }
@@ -631,6 +657,44 @@ func drawEnginePage() {
 	drawPercentTile(rect{in.x, in.y, topW, topH}, t[0].Icon, t[0].Label, load, loadC)
 	drawPercentTile(rect{in.x + topW + gap, in.y, topW, topH}, t[1].Icon, t[1].Label, thr, thrC)
 	drawLambdaTile(rect{in.x, bottomY, in.w, bottomH}, lambda, readingStale(t[2].PID))
+}
+
+func drawPedalPage() {
+	in := innerRect()
+	topH := int16(65)
+	topW := (in.w - gap) / 2
+	bottomY := in.y + topH + gap
+	bottomH := in.h - topH - gap
+
+	t := pages[6].Tiles
+	d, dOK := readingNumber(t[0].PID)
+	e, eOK := readingNumber(t[1].PID)
+	rel, relOK := readingNumber(t[2].PID)
+	if !dOK {
+		d = -1
+	}
+	if !eOK {
+		e = -1
+	}
+	if !relOK {
+		rel = -1
+	}
+	dC := throttleColor(d)
+	eC := throttleColor(e)
+	relC := throttleColor(rel)
+	if readingStale(t[0].PID) {
+		dC = amber
+	}
+	if readingStale(t[1].PID) {
+		eC = amber
+	}
+	if readingStale(t[2].PID) {
+		relC = amber
+	}
+
+	drawPercentTile(rect{in.x, in.y, topW, topH}, t[0].Icon, t[0].Label, d, dC)
+	drawPercentTile(rect{in.x + topW + gap, in.y, topW, topH}, t[1].Icon, t[1].Label, e, eC)
+	drawPercentTile(rect{in.x, bottomY, in.w, bottomH}, t[2].Icon, t[2].Label, rel, relC)
 }
 
 func drawPercentTile(r rect, icon int, label string, v float64, c color.RGBA) {
@@ -1049,13 +1113,6 @@ func statusColor(ok bool) color.RGBA {
 		return green
 	}
 	return red
-}
-
-func onOff(v bool) string {
-	if v {
-		return "ON"
-	}
-	return "OFF"
 }
 
 func yesNo(v bool) string {

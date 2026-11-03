@@ -243,16 +243,22 @@ func (s *serialSink) checkAck(line []byte) {
 
 func main() {
 	var (
-		portName = flag.String("port", "", "serial port")
-		file     = flag.String("file", "", "raw.log or decoded.ndjson")
-		speed    = flag.Float64("speed", 1, "replay speed; 0 = no wait")
-		loop     = flag.Bool("loop", false, "repeat the file")
-		startMs  = flag.Int64("start", -1, "start at device ms")
-		endMs    = flag.Int64("end", -1, "stop at device ms")
-		dryRun   = flag.Bool("dry-run", false, "do not open serial")
-		verbose  = flag.Bool("verbose", false, "print every record")
-		echo     = flag.Bool("echo", false, "echo firmware serial output")
-		reset    = flag.Bool("reset", true, "reset the board before replay")
+		portName  = flag.String("port", "", "serial port")
+		file      = flag.String("file", "", "raw.log or decoded.ndjson")
+		speed     = flag.Float64("speed", 1, "replay speed; 0 = no wait")
+		loop      = flag.Bool("loop", false, "repeat the file")
+		startMs   = flag.Int64("start", -1, "start at device ms")
+		endMs     = flag.Int64("end", -1, "stop at device ms")
+		dryRun    = flag.Bool("dry-run", false, "do not open serial")
+		verbose   = flag.Bool("verbose", false, "print every record")
+		echo      = flag.Bool("echo", false, "echo firmware serial output")
+		reset     = flag.Bool("reset", true, "reset the board before replay")
+		simMode   = flag.Bool("sim", false, "run the live session against a simulated ELM")
+		dropAfter = flag.Int("drop-after", 0, "sim: drop responses after N commands (0 = never)")
+		dropFor   = flag.Duration("drop-for", 10*time.Second, "sim: silence after drop-after")
+		mil       = flag.Bool("mil", false, "sim: MIL on")
+		dtcs      = flag.String("dtcs", "", "sim: stored DTCs, comma-separated (P0133,U0123)")
+		readiness = flag.String("readiness", "07E100", "sim: readiness bytes B/C/D in hex")
 	)
 	flag.Parse()
 	if *file == "" {
@@ -264,6 +270,28 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	if *simMode {
+		if *portName == "" {
+			log.Fatal("--port is required for --sim")
+		}
+		err := runSim(ctx, simOptions{
+			portName:  *portName,
+			file:      *file,
+			echo:      *echo,
+			reset:     *reset,
+			verbose:   *verbose,
+			dropAfter: *dropAfter,
+			dropFor:   *dropFor,
+			mil:       *mil,
+			readiness: *readiness,
+			dtcs:      parseDTCList(*dtcs),
+		})
+		if err != nil {
+			log.Fatalf("sim: %v", err)
+		}
+		return
+	}
 
 	src, err := openSource(*file)
 	if err != nil {
