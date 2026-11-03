@@ -5,8 +5,10 @@ FILE ?= testdata/obd-logger-sample-compact.txt
 SPEED ?= 1
 DROP_AFTER ?= 0
 ML_OUT ?= reports
+PIDS ?= 010C,010D,0111
+OUT ?= data
 
-.PHONY: build check test logger log replay replay-device sim ml ml-test hello wifi ble display obd obd-client obd-bench obd-tune obd-logger obd-probe monitor clean
+.PHONY: build check test logger log replay replay-device sim ml ml-test raw-bridge raw-simple raw-log hello wifi ble display obd obd-client obd-bench obd-tune obd-logger obd-probe monitor clean
 
 build:
 	$(TINYGO) build -target=$(TARGET) -size short -o /tmp/m5-hello.bin ./examples/hello
@@ -46,6 +48,15 @@ ml:
 
 ml-test:
 	cd ml && uv run pytest
+
+raw-bridge:
+	$(TINYGO) flash -target=$(TARGET) -port=$(PORT) -size short ./poc/obd2/obd-raw-bridge
+
+raw-simple:
+	$(TINYGO) flash -target=$(TARGET) -port=$(PORT) -size short ./poc/obd2/obd-raw-simple
+
+raw-log:
+	go run ./cmd/obd-logger-v2 --port=$(PORT) --out=$(OUT) --pids=$(PIDS)
 
 sim:
 	go run ./cmd/obd-replay --sim --port=$(PORT) --file=$(FILE) --drop-after=$(DROP_AFTER)
