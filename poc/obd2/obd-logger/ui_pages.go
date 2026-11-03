@@ -60,6 +60,14 @@ var pages = []Page{
 	{
 		Name: "VIAGEM",
 	},
+	{
+		Name: "PEDAL",
+		Tiles: []Tile{
+			{PID: "49", Label: "PEDAL D", Unit: "%", Icon: iconGauge, Kind: tilePercent},
+			{PID: "4A", Label: "PEDAL E", Unit: "%", Icon: iconGauge, Kind: tilePercent},
+			{PID: "45", Label: "BORB REL", Unit: "%", Icon: iconRate, Kind: tilePercent},
+		},
+	},
 }
 
 var pageCount = len(pages)

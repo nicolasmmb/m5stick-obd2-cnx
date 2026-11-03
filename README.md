@@ -16,7 +16,7 @@ dados do carro no LCD.
 | BLE GATT no ELM327 | ✅ `FFF0/FFF1/FFF2` |
 | Handshake ELM327 | ✅ `ELM327 v2.1` |
 | PIDs Mode 01 | ✅ 43 suportados |
-| UI OBD2 | ✅ 6 páginas, sem flicker/ghosting |
+| UI OBD2 | ✅ 7 páginas, sem flicker/ghosting |
 | Data loader | ✅ serial compacta → CSV long/wide; replay testado |
 | Reconexão BLE | ✅ backoff 1/2/5/10 s + beeps (validar no hardware) |
 | DTCs/readiness | ✅ eventos `E` + resumo em `metadata.json` |
@@ -167,6 +167,7 @@ go run ./cmd/obd-logger --replay=testdata/obd-logger-sample-compact.txt --out=da
 | 4 | carga, borboleta, lambda | `0104`, `0111`, `0144` |
 | 5 | tensão, MIL, DTCs | `0142`, `0101`, Mode `03` |
 | 6 | distância, combustível usado, consumo | derivado de `010D`/`012F` |
+| 7 | pedal D, pedal E, borboleta relativa | `0149`, `014A`, `0145` |
 
 - **A** = próxima página; **B** = anterior.
 - Litros: `raw_2F / 255 * capacidade`. O padrão é **44,0 L**
@@ -230,7 +231,7 @@ Detalhes em **[docs/P1-ROBUSTNESS.md](docs/P1-ROBUSTNESS.md)**.
 | obd-bench | 300 KB | 19,3 KB |
 | obd-tune | 295 KB | 19,3 KB |
 | obd-display | 292 KB | 72,8 KB (16,2 KB de framebuffer) |
-| obd-logger | 313 KB | 61,4 KB (16,2 KB de framebuffer) |
+| obd-logger | 314 KB | 61,4 KB (16,2 KB de framebuffer) |
 
 ## Ambiente
 

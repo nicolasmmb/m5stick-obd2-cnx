@@ -169,6 +169,29 @@ Dados derivados:
 
 A distância e o consumo zeram quando o firmware reinicia.
 
+## Página 7 — PEDAL
+
+```text
+┌──────────────────┬──────────────────┐
+│      PEDAL D     │      PEDAL E     │
+│       42%        │       43%        │
+├──────────────────┴──────────────────┤
+│              BORB REL               │
+│                18%                  │
+└──────────────────────────────────────┘
+```
+
+| Dado | PID | Fonte |
+|---|---|---|
+| Pedal D | `0149` | Accelerator pedal position D |
+| Pedal E | `014A` | Accelerator pedal position E |
+| Borboleta relativa | `0145` | Relative throttle position |
+
+Cores iguais à borboleta: <50% verde, 50–79% amarelo, ≥80% vermelho;
+STALE = amarelo.
+
+Os três PIDs foram movidos para o grupo rápido para as barras responderem.
+
 ## Tipografia
 
 - valores grandes: `Bold18`;

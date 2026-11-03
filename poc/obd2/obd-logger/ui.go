@@ -475,6 +475,8 @@ func composePage() {
 		drawDiagnosticsPage()
 	case 5:
 		drawTripPage()
+	case 6:
+		drawPedalPage()
 	}
 	drawPageDots()
 }
@@ -646,6 +648,44 @@ func drawEnginePage() {
 	drawPercentTile(rect{in.x, in.y, topW, topH}, t[0].Icon, t[0].Label, load, loadC)
 	drawPercentTile(rect{in.x + topW + gap, in.y, topW, topH}, t[1].Icon, t[1].Label, thr, thrC)
 	drawLambdaTile(rect{in.x, bottomY, in.w, bottomH}, lambda, readingStale(t[2].PID))
+}
+
+func drawPedalPage() {
+	in := innerRect()
+	topH := int16(65)
+	topW := (in.w - gap) / 2
+	bottomY := in.y + topH + gap
+	bottomH := in.h - topH - gap
+
+	t := pages[6].Tiles
+	d, dOK := readingNumber(t[0].PID)
+	e, eOK := readingNumber(t[1].PID)
+	rel, relOK := readingNumber(t[2].PID)
+	if !dOK {
+		d = -1
+	}
+	if !eOK {
+		e = -1
+	}
+	if !relOK {
+		rel = -1
+	}
+	dC := throttleColor(d)
+	eC := throttleColor(e)
+	relC := throttleColor(rel)
+	if readingStale(t[0].PID) {
+		dC = amber
+	}
+	if readingStale(t[1].PID) {
+		eC = amber
+	}
+	if readingStale(t[2].PID) {
+		relC = amber
+	}
+
+	drawPercentTile(rect{in.x, in.y, topW, topH}, t[0].Icon, t[0].Label, d, dC)
+	drawPercentTile(rect{in.x + topW + gap, in.y, topW, topH}, t[1].Icon, t[1].Label, e, eC)
+	drawPercentTile(rect{in.x, bottomY, in.w, bottomH}, t[2].Icon, t[2].Label, rel, relC)
 }
 
 func drawPercentTile(r rect, icon int, label string, v float64, c color.RGBA) {

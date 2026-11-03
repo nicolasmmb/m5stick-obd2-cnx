@@ -70,6 +70,7 @@ X,<ms>,<motivo>
 - página 4: carga, borboleta e lambda;
 - página 5: tensão, MIL e DTCs;
 - página 6: distância, combustível usado e consumo;
+- página 7: pedal D, pedal E e borboleta relativa;
 - botões A/B (interrupt + polling fallback);
 - ACK serial do host para o estado `SERIAL`;
 - reconexão automática do BLE com backoff (1/2/5/10 s) e beeps no buzzer;
@@ -134,6 +135,7 @@ data/<sessão>/
 | SERIAL WAIT/OK/DISC | ✅ confirmado |
 | Cores após `IsBGR(false)` | ✅ confirmado |
 | Páginas 1–6 | ✅ confirmadas visualmente |
+| Página 7 (pedal) | ⏳ pendente de confirmação visual |
 | Replay 5–10 min sem OOM | ✅ |
 | UI durante conexão BLE | ✅ confirmado (sem trava) |
 | Snapshots da UI (P2) | ✅ implementado; ⏳ validação visual |
@@ -245,7 +247,7 @@ Firmware: um único binário (live + replay).
 - texto desenhado direto pelo glifo, sem a slice de cores do `tinyfont`;
 - replay validado por 90 s / 2.436 registros sem OOM, a ~70 ticks/s;
 - binário P1: flash 307.844 / RAM 59.084 (antes 302.356 / 59.028);
-- com simulador serial: flash 320.480 / RAM 62.924.
+- com simulador serial: flash 321.408 / RAM 62.924.
 
 ### BLE no modo replay
 

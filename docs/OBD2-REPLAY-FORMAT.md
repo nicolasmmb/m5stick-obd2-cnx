@@ -2,7 +2,7 @@
 
 ## Objetivo
 
-Enviar uma gravação (`raw.log`) para o M5Stick e renderizar as 6 páginas como
+Enviar uma gravação (`raw.log`) para o M5Stick e renderizar as 7 páginas como
 se o carro estivesse conectado, sem BLE/OBD2.
 
 ## Fluxo
@@ -123,7 +123,7 @@ Firmware
 
 ## Critérios de aceite
 
-- uma gravação atualiza as 6 páginas;
+- uma gravação atualiza as 7 páginas;
 - `C,LIVE` retorna ao scan BLE;
 - linha inválida não trava o firmware;
 - `SERIAL` fica OK com ACK;

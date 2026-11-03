@@ -168,7 +168,7 @@ go test ./poc/obd2/obd-logger ./cmd/obd-replay ./internal/...
 
 ## Limitações
 
-- o snapshot é estático: as 6 páginas mostram o último valor do arquivo;
+- o snapshot é estático: as 7 páginas mostram o último valor do arquivo;
 - o simulador não reproduz latência real do ELM (responde na hora);
 - o transporte BLE em si continua precisando de hardware para validação final;
 - `--drop-for` deve ser maior que 3 timeouts (6–9 s) para garantir a queda.

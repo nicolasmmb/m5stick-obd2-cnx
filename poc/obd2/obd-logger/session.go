@@ -91,6 +91,10 @@ var fastPIDs = []pidSpec{
 	{"0144", "44", "lambda", kLambda},
 	{"0106", "06", "%", kTrim},
 	{"0107", "07", "%", kTrim},
+	// Pedal page: keep these in the fast group so the bars move.
+	{"0145", "45", "%", kPct},
+	{"0149", "49", "%", kPct},
+	{"014A", "4A", "%", kPct},
 }
 
 var slowPIDs = []pidSpec{
@@ -101,9 +105,6 @@ var slowPIDs = []pidSpec{
 	{"0142", "42", "V", kVoltage},
 	{"0152", "52", "%", kPct},
 	{"0146", "46", "C", kTemp},
-	{"0145", "45", "%", kPct},
-	{"0149", "49", "%", kPct},
-	{"014A", "4A", "%", kPct},
 	{"014C", "4C", "%", kPct},
 	{"0133", "33", "kPa", kBaro},
 }
