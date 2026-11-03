@@ -1,0 +1,33 @@
+[project]
+name = "obdml"
+version = "0.1.0"
+description = "Unsupervised anomaly detection for OBD-II serial logs"
+requires-python = ">=3.12"
+dependencies = [
+    "polars>=1.0",
+    "numpy>=1.26",
+    "scipy>=1.11",
+    "scikit-learn>=1.4",
+    "stumpy>=1.13",
+    "matplotlib>=3.8",
+    "pyserial>=3.5",
+]
+
+[project.scripts]
+obdml = "obdml.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["obdml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+]

@@ -1,2 +1,6 @@
 .DS_Store
 data/
+ml/.venv/
+ml/reports/
+ml/.pytest_cache/
+ml/**/__pycache__/
