@@ -72,7 +72,6 @@ var (
 	tripKm        float64
 	tripFuelStart float64
 	tripLast      time.Time
-	uiPaused      bool
 
 	dirtyTiles    uint16
 	dirtyAll      bool
@@ -286,10 +285,6 @@ func handleButtons() bool {
 func uiLoop() {
 	for {
 		serialLink.Poll()
-		if uiPaused {
-			time.Sleep(12 * time.Millisecond)
-			continue
-		}
 		if handleButtons() {
 			dirtyAll = true
 		}

@@ -13,11 +13,13 @@ O polling distingue três resultados:
 | Resultado | Quando | Ação |
 |---|---|---|
 | `pidOK` | resposta válida | zera o contador de falhas |
-| `pidRetry` | `NO DATA`, `PARSE_ERROR` ou timeout | incrementa o contador |
+| `pidRetry` | `NO DATA`/`PARSE_ERROR` | zera o contador: o adaptador respondeu |
+| `pidTimeout` | sem resposta dentro de 2 s | incrementa o contador |
 | `pidLinkLost` | `WriteWithoutResponse` falhou | encerra a sessão imediatamente |
 
-Três falhas consecutivas (`pidRetry`) também encerram a sessão: um adaptador
-fora de alcance normalmente para de responder antes de a escrita falhar.
+Três **timeouts** consecutivos também encerram a sessão: um adaptador fora de
+alcance normalmente para de responder antes de a escrita falhar. `NO DATA` é
+uma resposta válida (PID não suportado), então **não** derruba o link.
 
 ### Backoff
 
@@ -113,7 +115,7 @@ primeiro byte é a contagem, não um código. Respostas multi-frame
 - `tinygo build -target=m5stick-c -size short` ✅
   - antes: flash 302.356 / RAM 59.028
   - depois (P1): flash 307.844 / RAM 59.084
-  - com o simulador serial: flash 318.020 / RAM 59.796
+  - com o simulador serial: flash 318.832 / RAM 59.804
 - `gopls check` no firmware ✅
 
 A lógica de sessão agora roda no host contra um `Transport` fake
@@ -127,11 +129,17 @@ A lógica de sessão agora roda no host contra um `Transport` fake
 
 Validação no Stick sem BLE: ver [SERIAL-SIM.md](SERIAL-SIM.md).
 
+Validado em hardware:
+
+- a UI continua atualizando durante o `Connect` do BLE (sem pausa);
+- os dados continuam sendo gravados em `data/`.
+
 Pendente de hardware:
 
 - derrubar o adaptador e confirmar reconexão + beeps;
 - Ctrl-C e confirmar `BLE=OFF`;
-- carro com DTC/readiness para validar os códigos reais.
+- carro com DTC/readiness para validar os códigos reais;
+- sessão longa de 5–10 min.
 
 ## 5. Arquivos
 

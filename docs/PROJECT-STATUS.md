@@ -135,6 +135,8 @@ data/<sessão>/
 | Cores após `IsBGR(false)` | ✅ confirmado |
 | Páginas 1–6 | ✅ confirmadas visualmente |
 | Replay 5–10 min sem OOM | ✅ |
+| UI durante conexão BLE | ✅ confirmado (sem trava) |
+| Dados salvos em `data/` | ✅ confirmado |
 | Reconexão BLE + beeps | ⏳ pendente de hardware |
 | `X` em `ble_lost`/`host` | ✅ testes de host; ⏳ hardware |
 | DTC/readiness | ✅ testes de host; ⏳ carro |
@@ -234,7 +236,7 @@ Firmware: um único binário (live + replay).
 - texto desenhado direto pelo glifo, sem a slice de cores do `tinyfont`;
 - replay validado por 90 s / 2.436 registros sem OOM, a ~70 ticks/s;
 - binário P1: flash 307.844 / RAM 59.084 (antes 302.356 / 59.028);
-- com simulador serial: flash 318.020 / RAM 59.796.
+- com simulador serial: flash 318.832 / RAM 59.804.
 
 ### BLE no modo replay
 

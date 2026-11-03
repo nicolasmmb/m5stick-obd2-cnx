@@ -43,6 +43,7 @@ func openBLE() (*bleLink, error) {
 	bleState = bleScan
 	elmState = elmWait
 	var addr bluetooth.Address
+	var foundName string
 	found := false
 	scan := func(_ *bluetooth.Adapter, r bluetooth.ScanResult) {
 		if appMode != ModeLive {
@@ -54,9 +55,11 @@ func openBLE() (*bleLink, error) {
 		}
 		if r.HasServiceUUID(uuidFFF0) || strings.Contains(strings.ToLower(r.LocalName()), "obd") {
 			addr = r.Address
+			foundName = r.LocalName()
 			found = true
 			bleState = bleConnecting
-			println("obd-logger: found", r.Address.String(), r.LocalName())
+			// Do not print here: this callback runs in the BLE stack context
+			// and a blocking serial write can wedge the whole controller.
 			adapter.StopScan()
 		}
 	}
@@ -77,46 +80,48 @@ func openBLE() (*bleLink, error) {
 		return nil, scanErr
 	}
 	if !found {
-		return nil, &simpleError{"no OBDII BLE device found"}
+		return nil, errNoDevice
 	}
+	println("obd-logger: found", addr.String(), foundName)
 
 	time.Sleep(150 * time.Millisecond)
-	// Pause the full-screen UI only during Connect, where it could compete
-	// with the BLE controller.
-	uiPaused = true
-	// If Connect blocks longer than expected, let the UI resume so the
-	// display does not stay frozen on LINK forever.
-	go func() {
-		time.Sleep(3 * time.Second)
-		uiPaused = false
-	}()
+	// Keep the UI loop running during Connect. Pausing it here was the cause
+	// of the screen freezing on LINK (the old a53b791 fix kept ticking UI).
+	println("obd-logger: connecting")
 	dev, err := adapter.Connect(addr, bluetooth.ConnectionParams{})
 	if err != nil {
+		println("obd-logger: connect failed:", err.Error())
 		return nil, err
 	}
+	println("obd-logger: connected")
 	bleState = bleConnected
 	elmState = elmInit
-	uiPaused = false
 	dirtyAll = true
+	println("obd-logger: discovering")
 	services, err := dev.DiscoverServices([]bluetooth.UUID{uuidFFF0})
 	if err != nil {
+		println("obd-logger: discover failed:", err.Error())
 		_ = dev.Disconnect()
 		return nil, err
 	}
 	chars, err := services[0].DiscoverCharacteristics([]bluetooth.UUID{uuidFFF1, uuidFFF2})
 	if err != nil {
+		println("obd-logger: characteristics failed:", err.Error())
 		_ = dev.Disconnect()
 		return nil, err
 	}
 	link := &bleLink{dev: dev, write: chars[1]}
+	println("obd-logger: enabling notifications")
 	if err := chars[0].EnableNotifications(func(buf []byte) {
 		link.mu.Lock()
 		link.rx = append(link.rx, buf...)
 		link.mu.Unlock()
 	}); err != nil {
+		println("obd-logger: notifications failed:", err.Error())
 		_ = dev.Disconnect()
 		return nil, err
 	}
+	println("obd-logger: link ready")
 	return link, nil
 }
 

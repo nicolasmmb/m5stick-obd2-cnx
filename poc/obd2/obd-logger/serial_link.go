@@ -88,7 +88,6 @@ func (s *SerialLink) handle(line obdline.Line) {
 		emitEnd("replay")
 		appMode = ModeReplay
 		resetReplayValues()
-		uiPaused = false
 		page = 1
 		dirtyAll = true
 		bleState = bleOff
@@ -103,7 +102,6 @@ func (s *SerialLink) handle(line obdline.Line) {
 		bleStopScan()
 		emitEnd("host")
 		appMode = ModePaused
-		uiPaused = false
 		dirtyAll = true
 		bleState = bleOff
 		elmState = elmWait
@@ -113,7 +111,6 @@ func (s *SerialLink) handle(line obdline.Line) {
 		emitEnd("sim")
 		appMode = ModeSim
 		resetReplayValues()
-		uiPaused = false
 		page = 1
 		dirtyAll = true
 		bleState = bleOff

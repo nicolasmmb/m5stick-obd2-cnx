@@ -11,6 +11,10 @@ import (
 // succeeds.
 var reconnectAttempt int
 
+// noDeviceLogged avoids filling the serial TX buffer with the same scan error
+// when nobody is reading the USB port.
+var noDeviceLogged bool
+
 func main() {
 	hold := machine.GPIO4
 	hold.Configure(machine.PinConfig{Mode: machine.PinOutput})
@@ -39,7 +43,6 @@ func main() {
 	for {
 		switch appMode {
 		case ModeReplay, ModePaused:
-			uiPaused = false
 			time.Sleep(200 * time.Millisecond)
 			continue
 		case ModeSim:
@@ -47,9 +50,14 @@ func main() {
 			continue
 		}
 		err := runLive()
-		uiPaused = false
 		bleStopScan()
-		if err != nil && err != errReplay && err != errStop {
+		switch {
+		case err == errNoDevice:
+			if !noDeviceLogged {
+				println("obd-logger:", err.Error())
+				noDeviceLogged = true
+			}
+		case err != nil && err != errReplay && err != errStop:
 			println("obd-logger:", err.Error())
 		}
 		if appMode != ModeLive {
@@ -78,6 +86,7 @@ func runLive() error {
 		return err
 	}
 	defer link.Close()
+	println("obd-logger: session start")
 	return (&Session{
 		T:     link,
 		Sink:  liveSink{},
@@ -89,7 +98,6 @@ func runLive() error {
 // runSimLoop reuses the exact session loop against the serial simulator.
 func runSimLoop() {
 	for appMode == ModeSim {
-		uiPaused = false
 		bleState = bleOff
 		elmState = elmWait
 		err := (&Session{
@@ -98,7 +106,6 @@ func runSimLoop() {
 			Clock: realClock{},
 			Mode:  simModeError,
 		}).Run()
-		uiPaused = false
 		if appMode != ModeSim {
 			return
 		}
