@@ -228,7 +228,8 @@ Medir em três pontos: boot, `BLE=ON` e sessão com BLE conectado.
 - [x] `C,SIM` na placa recebe `I/P/E/X` com a UI lendo snapshots.
 - [x] Heap livre com BLE **habilitado**: **22.731 B** (≥ 20 KB).
 - [ ] Heap livre com BLE **conectado** (medir com `C,MEM`).
-- [ ] Validação visual: 7 páginas + heartbeat + idade/STALE.
+- [x] Página 7 (pedal) atualizando em tempo real no hardware.
+- [ ] Validação visual final: heartbeat + idade/STALE nas demais páginas.
 - [x] `go vet` e `gopls check` limpos.
 
 ## 6. Commits previstos

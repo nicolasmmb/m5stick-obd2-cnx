@@ -134,8 +134,7 @@ data/<sessão>/
 | Botões A/B | ✅ confirmado |
 | SERIAL WAIT/OK/DISC | ✅ confirmado |
 | Cores após `IsBGR(false)` | ✅ confirmado |
-| Páginas 1–6 | ✅ confirmadas visualmente |
-| Página 7 (pedal) | ⏳ pendente de confirmação visual |
+| Páginas 1–7 | ✅ confirmadas visualmente (pedal atualiza em tempo real) |
 | Replay 5–10 min sem OOM | ✅ |
 | UI durante conexão BLE | ✅ confirmado (sem trava) |
 | Snapshots da UI (P2) | ✅ implementado; ⏳ validação visual |
