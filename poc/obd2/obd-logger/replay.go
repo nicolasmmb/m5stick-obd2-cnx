@@ -17,6 +17,7 @@ func applyReplayRecord(rec obdline.Record) {
 
 func resetReplayValues() {
 	readingStore.Clear()
+	snapshots.Clear()
 	dtcCount = -1
 	milOn = false
 	tripKm = 0

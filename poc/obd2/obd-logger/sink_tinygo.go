@@ -35,7 +35,10 @@ func (liveSink) PID(ms int64, pid string, raw []byte, latencyMs int64) {
 
 func (liveSink) End(ms int64, reason string) { emitEndAt(ms, reason) }
 
-func (liveSink) Quality(pid string, q obdpid.Quality) { readingStore.PutQuality(pid, q) }
+func (liveSink) Quality(pid string, q obdpid.Quality) {
+	readingStore.PutQuality(pid, q)
+	publishQuality(pid, q)
+}
 
 func (liveSink) MIL(on bool) { milOn = on }
 

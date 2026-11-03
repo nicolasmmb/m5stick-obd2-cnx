@@ -73,6 +73,8 @@ var (
 	tripFuelStart float64
 	tripLast      time.Time
 
+	frameSnap = snapshots.Current()
+
 	dirtyTiles    uint16
 	dirtyAll      bool
 	heartOn       bool
@@ -181,15 +183,30 @@ func initButtons() {
 	lastBState = machine.GPIO39.Get()
 }
 
+// reading always comes from one published snapshot, so every tile in a frame
+// sees the same instant and the same quality rules.
 func reading(pid string) (obdpid.Reading, bool) {
-	r, ok := readingStore.Get(pid)
+	snap := frameSnap
+	if snap == nil {
+		snap = snapshots.Current()
+	}
+	slot, ok := snap.Get(pidKey16(pid))
 	if !ok {
 		return obdpid.Reading{}, false
 	}
-	if r.Quality == obdpid.QualityOK && r.AgeMs(time.Now()) > 3000 {
-		r.Quality = obdpid.QualityStale
+	q := slot.Quality
+	if q == obdpid.QualityOK && liveMs()-int64(slot.AtMs) > 3000 {
+		q = obdpid.QualityStale
 	}
-	return r, true
+	return obdpid.Reading{PID: pid, Value: slot.Value, Quality: q}, true
+}
+
+func pidKey16(pid string) uint16 {
+	var k uint16
+	for i := 0; i < len(pid) && i < 2; i++ {
+		k = k<<8 | uint16(pid[i])
+	}
+	return k
 }
 
 func readingNumber(pid string) (float64, bool) {
@@ -290,6 +307,7 @@ func uiLoop() {
 		}
 
 		now := time.Now()
+		frameSnap = snapshots.Current()
 		if now.Sub(lastStatusUI) >= 500*time.Millisecond {
 			lastStatusUI = now
 			if page == 0 {
