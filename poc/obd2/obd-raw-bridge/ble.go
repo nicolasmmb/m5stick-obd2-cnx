@@ -106,9 +106,28 @@ func bleLoop() {
 	}
 }
 
-func containsOBD(s string) bool {
-	for i := 0; i+2 < len(s); i++ {
-		if lowerASCII(s[i]) == 'o' && lowerASCII(s[i+1]) == 'b' && lowerASCII(s[i+2]) == 'd' {
+func looksLikeELM(s string) bool {
+	for _, token := range []string{"obd", "elm", "vgate", "icar"} {
+		if containsFold(s, token) {
+			return true
+		}
+	}
+	return false
+}
+
+func containsFold(s, token string) bool {
+	if len(token) == 0 || len(s) < len(token) {
+		return false
+	}
+	for i := 0; i+len(token) <= len(s); i++ {
+		ok := true
+		for j := 0; j < len(token); j++ {
+			if lowerASCII(s[i+j]) != token[j] {
+				ok = false
+				break
+			}
+		}
+		if ok {
 			return true
 		}
 	}
@@ -127,6 +146,7 @@ func openBLE() (*bleLink, error) {
 	time.Sleep(150 * time.Millisecond)
 
 	var addr bluetooth.Address
+	var foundName string
 	found := false
 	scan := func(_ *bluetooth.Adapter, r bluetooth.ScanResult) {
 		if !bleWant {
@@ -136,8 +156,11 @@ func openBLE() (*bleLink, error) {
 		if found {
 			return
 		}
-		if r.HasServiceUUID(uuidFFF0) || containsOBD(r.LocalName()) {
+		name := r.LocalName()
+		// Empty-name devices advertising FFF0 are often beacons, not ELM327.
+		if looksLikeELM(name) || (name != "" && r.HasServiceUUID(uuidFFF0)) {
 			addr = r.Address
+			foundName = name
 			found = true
 			adapter.StopScan()
 		}
@@ -151,28 +174,57 @@ func openBLE() (*bleLink, error) {
 	if !found {
 		return nil, errNoDevice
 	}
+	emit("E," + strconv.FormatInt(nowMs(), 10) + ",FOUND," + addr.String() + "," + foundName)
 
-	dev, err := adapter.Connect(addr, bluetooth.ConnectionParams{})
+	time.Sleep(200 * time.Millisecond)
+	emit("E," + strconv.FormatInt(nowMs(), 10) + ",CONNECTING," + addr.String())
+	dev, err := adapter.Connect(addr, bluetooth.ConnectionParams{
+		ConnectionTimeout: bluetooth.NewDuration(5 * time.Second),
+		Timeout:           bluetooth.NewDuration(5 * time.Second),
+	})
 	if err != nil {
+		emit("E," + strconv.FormatInt(nowMs(), 10) + ",CONNECT_FAIL")
 		return nil, err
 	}
+	emit("E," + strconv.FormatInt(nowMs(), 10) + ",CONNECTED," + addr.String())
+	time.Sleep(1 * time.Second)
+	emit("E," + strconv.FormatInt(nowMs(), 10) + ",DISCOVER")
 	services, err := dev.DiscoverServices([]bluetooth.UUID{uuidFFF0})
 	if err != nil {
+		emit("E," + strconv.FormatInt(nowMs(), 10) + ",SERVICE_FAIL")
 		_ = dev.Disconnect()
 		return nil, err
 	}
+	if len(services) == 0 {
+		emit("E," + strconv.FormatInt(nowMs(), 10) + ",SERVICE_EMPTY")
+		_ = dev.Disconnect()
+		return nil, errNoDevice
+	}
+	emit("E," + strconv.FormatInt(nowMs(), 10) + ",SERVICES")
 	chars, err := services[0].DiscoverCharacteristics([]bluetooth.UUID{uuidFFF1, uuidFFF2})
 	if err != nil {
+		emit("E," + strconv.FormatInt(nowMs(), 10) + ",CHAR_FAIL")
 		_ = dev.Disconnect()
 		return nil, err
 	}
+	if len(chars) < 2 {
+		emit("E," + strconv.FormatInt(nowMs(), 10) + ",CHAR_EMPTY")
+		_ = dev.Disconnect()
+		return nil, errNoDevice
+	}
+	emit("E," + strconv.FormatInt(nowMs(), 10) + ",CHARS")
 	link := &bleLink{dev: dev, write: chars[1]}
+	adapter.StopScan()
+	time.Sleep(500 * time.Millisecond)
+	emit("E," + strconv.FormatInt(nowMs(), 10) + ",NOTIFY")
 	if err := chars[0].EnableNotifications(func(buf []byte) {
 		rxRing.write(buf)
 	}); err != nil {
+		emit("E," + strconv.FormatInt(nowMs(), 10) + ",NOTIFY_FAIL")
 		_ = dev.Disconnect()
 		return nil, err
 	}
+	emit("E," + strconv.FormatInt(nowMs(), 10) + ",READY")
 	return link, nil
 }
 
