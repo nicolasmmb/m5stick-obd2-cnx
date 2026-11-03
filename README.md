@@ -41,8 +41,10 @@ poc/obd2/
   obd-tune/        # compara ATAT/ATST
   obd-display/     # UI de 3 páginas no LCD
   obd-logger/      # firmware compacto + tela de status/dados
+  obd-raw-bridge/  # firmware mínimo: serial ↔ BLE, sem parser
 
 cmd/obd-logger/    # loader host: serial compacta/NDJSON legado → CSV
+cmd/obd-logger-v2/ # logger raw do bridge (protocolo HELLO/HB/C/Q/R)
 internal/obdlog/   # parser compacto/NDJSON, CSV long/wide e metadados
 ml/                # análise host: Polars, matrix profile, PCA/Mahalanobis
 testdata/          # amostras compacta e NDJSON para replay
@@ -96,6 +98,8 @@ make sim         # loop live via serial, sem BLE/carro
 make test        # testes do loader/parser/sessão
 
 make monitor     # monitor serial apenas
+make raw-bridge  # grava o firmware ponte serial ↔ BLE
+make raw-log     # logger raw v2 (HELLO/HB/C/Q/R)
 ```
 
 Direto com TinyGo:
@@ -140,6 +144,10 @@ make replay-device FILE=data/<sessão>/raw.log  # envia replay ao Stick
 make sim FILE=data/<sessão>/raw.log            # loop live sem BLE
 make sim FILE=data/<sessão>/raw.log DROP_AFTER=40  # testa reconexão
 ```
+
+O bridge raw (`obd-raw-bridge` + `cmd/obd-logger-v2`) permite testar
+BLE/ELM e gravar respostas cruas em append-only. Detalhes em
+**[docs/RAW-BRIDGE.md](docs/RAW-BRIDGE.md)**.
 
 O `--sim` roda o **mesmo loop live** do firmware (handshake, polling, DTCs,
 reconexão) usando respostas sintéticas pela serial. Detalhes em
