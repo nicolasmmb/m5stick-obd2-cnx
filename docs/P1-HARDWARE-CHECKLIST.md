@@ -80,17 +80,27 @@ Aceite: a UI continua atualizando o heartbeat durante tudo.
 
 ## 5. Memória com BLE conectado
 
-O baseline medido sem conexão real:
+O baseline medido sem conexão real (build P2 + `C,MEM`):
 
 | Momento | Heap livre |
 |---|---|
-| boot | 44.976 B |
-| `Adapter.Enable()` | 26.064 B |
-| BLE + sessão simulada | 25.728 B |
+| boot | 41.899 B |
+| `Adapter.Enable()` | 22.731 B |
 
-Com o adaptador conectado, repetir a medição com instrumentação temporária
-(`runtime.GC()` + `runtime.ReadMemStats`) ou com um futuro comando `C,MEM`.
-Aceite: **≥ 20 KB livres**.
+Com o adaptador conectado, peça a medição pela serial:
+
+```bash
+stty -f /dev/cu.usbserial-XXXX 115200 raw -echo
+printf 'C,MEM\n' > /dev/cu.usbserial-XXXX
+```
+
+O firmware responde:
+
+```text
+M,mem,alloc=<n>,free=<n>,sys=<n>,idle=<n>,total=<n>,gc=<n>
+```
+
+Aceite: `free` **≥ 20 KB** com BLE conectado.
 
 ## 6. Critérios de saída do backlog
 

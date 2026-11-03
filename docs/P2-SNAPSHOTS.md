@@ -127,19 +127,22 @@ Regras:
 
 ## 3. Memória e performance
 
-### 3.1 Baseline medido (build atual)
+### 3.1 Baseline medido (build atual: P2 + `C,MEM`)
 
 | Item | Valor |
 |---|---|
-| Flash | 318.832 B (3,8% de 8 MB) |
-| RAM estática (`data` + `bss`) | 59.804 B (11,2% de 520 KB) |
-| Arena de heap (`HeapSys`) | 70.923 B |
-| Heap no boot | 25.936 B alocados / **44.976 B livres** |
-| Heap com BLE habilitado | 44.848 B alocados / **26.064 B livres** |
-| BLE + sessão simulada | 45.184 B alocados / **25.728 B livres** |
+| Flash | 320.480 B (3,8% de 8 MB) |
+| RAM estática (`data` + `bss`) | 62.924 B (12,1% de 520 KB) |
+| Arena de heap (`HeapSys`) | 67.851 B |
+| Heap no boot | 25.952 B alocados / **41.899 B livres** |
+| Heap com BLE habilitado | 45.120 B alocados / **22.731 B livres** |
 
-Medido com `runtime.ReadMemStats` após `runtime.GC`; instrumentação removida
-do build final.
+Medido com `C,MEM` (`runtime.GC` + `runtime.ReadMemStats`).
+
+> O P2 adiciona 3.120 B em `.bss`, então o linker reduz a arena de heap em
+> praticamente o mesmo tamanho (70.923 → 67.851 B). O total de SRAM é fixo:
+> o ganho é consistência, não RAM grátis. Ainda sobram 22,7 KB livres com
+> BLE habilitado (alvo: ≥ 20 KB).
 
 ### 3.2 Orçamento do P2
 
@@ -151,16 +154,17 @@ do build final.
 | **Total RAM** | **3.120 B (~3,05 KB)** |
 | Código (flash) | +796 B |
 
-Com ~25 KB livres com BLE, o P2 deixa ~22 KB de folga. O limite de aceite é
-**não passar de 3,2 KB** de RAM adicional e **zero alocação por frame**.
+O limite de aceite é **não passar de 3,2 KB** de RAM adicional e **zero
+alocação por frame**. O P2 consome 3 KB da folga; com BLE ainda sobram
+**22,7 KB** (acima do alvo de 20 KB).
 
 Medido no build:
 
-| Versão | Flash | RAM estática |
-|---|---|---|
-| antes do P2 | 318.832 | 59.804 |
-| depois do P2 | **319.628** | **62.924** |
-| diferença | +796 | **+3.120** |
+| Versão | Flash | RAM estática | Heap livre (BLE) |
+|---|---|---|---|
+| antes do P2 | 318.832 | 59.804 | 26.064 |
+| P2 + `C,MEM` | **320.480** | **62.924** | **22.731** |
+| diferença | +1.648 | **+3.120** | **−3.333** |
 
 ### 3.3 Otimizações obrigatórias
 
@@ -170,7 +174,8 @@ Medido no build:
 - **PID como `uint16`** (dois ASCII), sem string.
 - **Publicar em lote** (10–20 Hz), não a cada `P` recebido.
 - **3 buffers** + troca atômica; sem `map`/slice por frame.
-- **Sem `runtime.GC()` em produção**; só na instrumentação de medição.
+- **Sem `runtime.GC()` no render**; o comando `C,MEM` chama GC sob demanda
+  para reportar memória realmente livre.
 - Manter o **dirty-tile** atual: o snapshot não redesenha a tela inteira.
 
 ### 3.4 Como medir
@@ -188,13 +193,12 @@ go test ./internal/obdsnapshot -bench=. -benchmem
 # aceite: Publish/Get com 0 allocs/op
 ```
 
-Runtime (temporário, como foi feito no P1):
+Runtime: comando `C,MEM` no firmware:
 
-```go
-runtime.GC()
-var m runtime.MemStats
-runtime.ReadMemStats(&m)
-println("M,", m.HeapAlloc, m.HeapSys, m.HeapIdle)
+```bash
+stty -f /dev/cu.usbserial-XXXX 115200 raw -echo
+printf 'C,MEM\n' > /dev/cu.usbserial-XXXX
+# M,mem,alloc=...,free=...,sys=...,idle=...,total=...,gc=...
 ```
 
 Medir em três pontos: boot, `BLE=ON` e sessão com BLE conectado.
@@ -222,7 +226,8 @@ Medir em três pontos: boot, `BLE=ON` e sessão com BLE conectado.
 - [x] `tinygo build -size short`: RAM adicional **3.120 B** (≤ 3,2 KB).
 - [x] `Slot` = 16 B e buffer de 64 slots = 1.024 B (teste com `unsafe.Sizeof`).
 - [x] `C,SIM` na placa recebe `I/P/E/X` com a UI lendo snapshots.
-- [ ] Heap livre com BLE **conectado** ≥ 20 KB.
+- [x] Heap livre com BLE **habilitado**: **22.731 B** (≥ 20 KB).
+- [ ] Heap livre com BLE **conectado** (medir com `C,MEM`).
 - [ ] Validação visual: 6 páginas + heartbeat + idade/STALE.
 - [x] `go vet` e `gopls check` limpos.
 

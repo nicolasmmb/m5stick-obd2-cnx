@@ -245,7 +245,7 @@ Firmware: um único binário (live + replay).
 - texto desenhado direto pelo glifo, sem a slice de cores do `tinyfont`;
 - replay validado por 90 s / 2.436 registros sem OOM, a ~70 ticks/s;
 - binário P1: flash 307.844 / RAM 59.084 (antes 302.356 / 59.028);
-- com simulador serial: flash 318.832 / RAM 59.804.
+- com simulador serial: flash 320.480 / RAM 62.924.
 
 ### BLE no modo replay
 
