@@ -57,6 +57,7 @@ docs/
   OBD2-DECODED-DATA.md
   ml/PROJECT-IDEAS.md
   PROJECT-STATUS.md  # status atual e próximos passos
+  P2-SNAPSHOTS.md    # próximo passo: snapshots com qualidade/idade
   logger/            # documentação de cada arquivo do data loader
   ui-layout.md       # grade e páginas da tela
   hardware/          # notas técnicas de display, sensores e Units
