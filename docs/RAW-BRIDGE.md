@@ -130,6 +130,7 @@ go run ./cmd/obd-logger-v2 \
 | `--session` | reaproveita/append no diretório |
 | `--reset` | pulso de reset antes do handshake (padrão ligado) |
 | `--ble-timeout` | tempo máximo esperando `BLE=ON` (padrão 20 s) |
+| `--once` | faz uma varredura e sai (padrão: contínuo) |
 | `--mem` | pede `C,MEM` no início/fim |
 | `--mem-every` | pede `C,MEM` periodicamente |
 | `--echo` | mostra serial cru |

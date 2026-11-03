@@ -332,6 +332,7 @@ func main() {
 		echo       = flag.Bool("echo", false, "echo raw serial bytes")
 		verbose    = flag.Bool("verbose", false, "print every line")
 		mem        = flag.Bool("mem", false, "request C,MEM at start/end")
+		once       = flag.Bool("once", false, "run one PID sweep and exit")
 		memEvery   = flag.Duration("mem-every", 0, "request C,MEM periodically")
 		reset      = flag.Bool("reset", true, "pulse reset before handshake")
 		bleTimeout = flag.Duration("ble-timeout", 20*time.Second, "wait for BLE=ON")
@@ -463,46 +464,51 @@ func main() {
 	total := 0
 	fail := 0
 	totalBytes := 0
-	for _, group := range groups {
-		select {
-		case <-ctx.Done():
-			goto done
-		default:
-		}
-		if *memEvery > 0 && time.Since(lastMem) >= *memEvery {
-			m.mem()
-			lastMem = time.Now()
-		}
-		cmd := makeCommand(group)
-		rawResp, latency, err := m.command(cmd, *timeout)
-		if err != nil && !m.bleReady {
-			if rerr := m.recover(); rerr != nil {
-				log.Printf("recover failed: %v", rerr)
+	for {
+		for _, group := range groups {
+			select {
+			case <-ctx.Done():
+				goto done
+			default:
 			}
-		}
-		ok := err == nil && allExpected(rawResp, group)
-		if !ok && len(group) > 1 {
-			log.Printf("multi failed (%s), falling back", cmd)
-			for _, pid := range group {
-				rawResp, latency, err = m.command("01"+pid, *timeout)
-				ok = err == nil && allExpected(rawResp, []string{pid})
-				writeCommand(cmdWriter, "01"+pid, latency, len(rawResp), ok, false)
+			if *memEvery > 0 && time.Since(lastMem) >= *memEvery {
+				m.mem()
+				lastMem = time.Now()
+			}
+			cmd := makeCommand(group)
+			rawResp, latency, err := m.command(cmd, *timeout)
+			if err != nil && !m.bleReady {
+				if rerr := m.recover(); rerr != nil {
+					log.Printf("recover failed: %v", rerr)
+				}
+			}
+			ok := err == nil && allExpected(rawResp, group)
+			if !ok && len(group) > 1 {
+				log.Printf("multi failed (%s), falling back", cmd)
+				for _, pid := range group {
+					rawResp, latency, err = m.command("01"+pid, *timeout)
+					ok = err == nil && allExpected(rawResp, []string{pid})
+					writeCommand(cmdWriter, "01"+pid, latency, len(rawResp), ok, false)
+					total++
+					totalBytes += len(rawResp)
+					if !ok {
+						fail++
+					}
+				}
+			} else {
+				writeCommand(cmdWriter, cmd, latency, len(rawResp), ok, len(group) > 1)
 				total++
 				totalBytes += len(rawResp)
 				if !ok {
 					fail++
 				}
 			}
-		} else {
-			writeCommand(cmdWriter, cmd, latency, len(rawResp), ok, len(group) > 1)
-			total++
-			totalBytes += len(rawResp)
-			if !ok {
-				fail++
+			if *interval > 0 {
+				time.Sleep(*interval)
 			}
 		}
-		if *interval > 0 {
-			time.Sleep(*interval)
+		if *once {
+			break
 		}
 	}
 
