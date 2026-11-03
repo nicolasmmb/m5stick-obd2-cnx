@@ -184,6 +184,7 @@ func (m *m5) hello(session string) error {
 
 func (m *m5) waitBLE(timeout time.Duration) error {
 	m.bleReady = false
+	lastState := ""
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		line, err := m.next(time.Until(deadline))
@@ -193,7 +194,15 @@ func (m *m5) waitBLE(timeout time.Duration) error {
 		m.note(line)
 		if isState(line, "BLE", "ON") {
 			m.bleReady = true
+			log.Printf("BLE: ON")
 			return nil
+		}
+		if isState(line, "BLE", "SCAN") || isState(line, "BLE", "OFF") {
+			parts := strings.Split(line, ",")
+			if len(parts) >= 4 && parts[3] != lastState {
+				lastState = parts[3]
+				log.Printf("BLE: %s", parts[3])
+			}
 		}
 		if strings.HasPrefix(line, "ERR,") {
 			return fmt.Errorf("%s", line)
@@ -295,15 +304,17 @@ func (m *m5) heartbeat(ctx context.Context) {
 
 func main() {
 	var (
-		portName = flag.String("port", "", "serial port")
-		out      = flag.String("out", "data", "output directory")
-		session  = flag.String("session", "", "session id (default timestamp)")
-		pidsFlag = flag.String("pids", "010C,010D,0111", "PIDs or 'all'")
-		multi    = flag.Int("multi", 1, "PIDs per command (1=individual)")
-		interval = flag.Duration("interval", 0, "delay between commands")
-		timeout  = flag.Duration("timeout", 2*time.Second, "per-command timeout")
-		echo     = flag.Bool("echo", false, "echo raw serial bytes")
-		verbose  = flag.Bool("verbose", false, "print every line")
+		portName   = flag.String("port", "", "serial port")
+		out        = flag.String("out", "data", "output directory")
+		session    = flag.String("session", "", "session id (default timestamp)")
+		pidsFlag   = flag.String("pids", "010C,010D,0111", "PIDs or 'all'")
+		multi      = flag.Int("multi", 1, "PIDs per command (1=individual)")
+		interval   = flag.Duration("interval", 0, "delay between commands")
+		timeout    = flag.Duration("timeout", 2*time.Second, "per-command timeout")
+		echo       = flag.Bool("echo", false, "echo raw serial bytes")
+		verbose    = flag.Bool("verbose", false, "print every line")
+		reset      = flag.Bool("reset", true, "pulse reset before handshake")
+		bleTimeout = flag.Duration("ble-timeout", 20*time.Second, "wait for BLE=ON")
 	)
 	flag.Parse()
 	if *portName == "" {
@@ -321,6 +332,15 @@ func main() {
 		log.Fatal(err)
 	}
 	defer p.Close()
+	if *reset {
+		_ = p.SetDTR(false)
+		_ = p.SetRTS(true)
+		time.Sleep(150 * time.Millisecond)
+		_ = p.SetRTS(false)
+		time.Sleep(50 * time.Millisecond)
+		_ = p.SetDTR(false)
+		time.Sleep(800 * time.Millisecond)
+	}
 
 	sid := *session
 	if sid == "" {
@@ -376,12 +396,13 @@ func main() {
 		log.Fatalf("serial handshake: %v", err)
 	}
 	log.Printf("waiting BLE...")
-	if err := m.waitBLE(30 * time.Second); err != nil {
-		log.Fatalf("BLE: %v", err)
+	if err := m.waitBLE(*bleTimeout); err != nil {
+		log.Fatalf("BLE: %v (check the OBD adapter power)", err)
 	}
 	log.Printf("BLE ready; ELM handshake")
 
 	for _, cmd := range []string{"ATZ", "ATE0", "ATL0", "ATS0", "ATSP0"} {
+		log.Printf("ELM: %s", cmd)
 		_, _, err := m.command(cmd, 4*time.Second)
 		if err != nil {
 			log.Fatalf("handshake %s: %v", cmd, err)
@@ -397,6 +418,7 @@ func main() {
 	if err := m.start(); err != nil {
 		log.Fatalf("START: %v", err)
 	}
+	log.Printf("recording started")
 	meta := map[string]any{
 		"session_id": sid,
 		"started_at": time.Now().Format(time.RFC3339Nano),
@@ -542,6 +564,7 @@ func resolvePIDs(m *m5, spec string) ([]string, error) {
 	base := 0x00
 	for base <= 0xE0 {
 		cmd := fmt.Sprintf("01%02X", base)
+		log.Printf("discover: %s", cmd)
 		raw, _, err := m.command(cmd, 3*time.Second)
 		if err != nil {
 			break
