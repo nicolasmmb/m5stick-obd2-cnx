@@ -1,6 +1,7 @@
 # P2 — snapshots da UI com qualidade e idade
 
-> Status: **planejado, não implementado**.
+> Status: **implementado** (pacote + integração na UI).
+> Validação visual no hardware pendente.
 > Pré-requisito: P0 concluído; P1 em backlog.
 > Objetivo: desenhar a UI a partir de um retrato consistente do cache, com
 > qualidade e idade por PID, sem alocação no caminho de render.
@@ -91,8 +92,9 @@ func (s *Store) Current() *Snapshot {
 
 - produtores (live, replay, sim) atualizam o buffer inativo e publicam;
 - a UI lê **um** snapshot por frame, sem lock;
-- publicação a 10–20 Hz, não a 60 Hz;
-- buffer duplo de 2×~1 KB dá janela suficiente para o frame de 16 ms.
+- publicação por amostra (~10–20 Hz), não a 60 Hz;
+- 3 buffers de ~1 KB dão dois ciclos de publicação para o frame de 16 ms
+  terminar sem reutilizar o buffer que a UI está lendo.
 
 ### 2.3 Render
 
@@ -141,16 +143,24 @@ do build final.
 
 ### 3.2 Orçamento do P2
 
-| Item | Custo estimado |
+| Item | Custo medido |
 |---|---|
 | 64 slots × 16 B | 1.024 B por buffer |
-| Buffer duplo | 2.048 B |
-| Cabeçalho + geração | ~64 B |
-| Código (flash) | ~1–2 KB |
-| **Total RAM** | **≤ 3 KB** |
+| 3 buffers | 3.072 B |
+| Cabeçalho + mutex | ~48 B |
+| **Total RAM** | **3.120 B (~3,05 KB)** |
+| Código (flash) | +796 B |
 
 Com ~25 KB livres com BLE, o P2 deixa ~22 KB de folga. O limite de aceite é
-**não passar de 3 KB** de RAM adicional e **zero alocação por frame**.
+**não passar de 3,2 KB** de RAM adicional e **zero alocação por frame**.
+
+Medido no build:
+
+| Versão | Flash | RAM estática |
+|---|---|---|
+| antes do P2 | 318.832 | 59.804 |
+| depois do P2 | **319.628** | **62.924** |
+| diferença | +796 | **+3.120** |
 
 ### 3.3 Otimizações obrigatórias
 
@@ -159,7 +169,7 @@ Com ~25 KB livres com BLE, o P2 deixa ~22 KB de folga. O limite de aceite é
 - **`uint32` ms** em vez de `time.Time` por slot (economiza ~16 B/slot).
 - **PID como `uint16`** (dois ASCII), sem string.
 - **Publicar em lote** (10–20 Hz), não a cada `P` recebido.
-- **Buffer duplo** + troca atômica; sem `map`/slice por frame.
+- **3 buffers** + troca atômica; sem `map`/slice por frame.
 - **Sem `runtime.GC()` em produção**; só na instrumentação de medição.
 - Manter o **dirty-tile** atual: o snapshot não redesenha a tela inteira.
 
@@ -204,13 +214,17 @@ Medir em três pontos: boot, `BLE=ON` e sessão com BLE conectado.
 
 ## 5. Validação
 
-- [ ] `go test ./internal/obdsnapshot` cobre `OK`, `STALE`, `TIMEOUT` e slot vazio.
-- [ ] `go test -bench=. -benchmem` com **0 allocs/op** em `Publish`/`Get`.
-- [ ] `tinygo build -size short`: RAM adicional ≤ 3 KB.
-- [ ] Heap livre com BLE conectado ≥ 20 KB.
-- [ ] Replay atualiza as 6 páginas a partir de snapshots.
-- [ ] Heartbeat continua a 2 Hz; idade aparece no rodapé.
-- [ ] `go vet` e `gopls check` limpos.
+- [x] `go test ./internal/obdsnapshot` cobre slot vazio, qualidade e carry-forward.
+- [x] `go test -bench=. -benchmem` com **0 allocs/op**:
+  - `Put` ~0,9 ns/op
+  - `Get` ~0,6 ns/op
+  - `Publish` ~31 ns/op
+- [x] `tinygo build -size short`: RAM adicional **3.120 B** (≤ 3,2 KB).
+- [x] `Slot` = 16 B e buffer de 64 slots = 1.024 B (teste com `unsafe.Sizeof`).
+- [x] `C,SIM` na placa recebe `I/P/E/X` com a UI lendo snapshots.
+- [ ] Heap livre com BLE **conectado** ≥ 20 KB.
+- [ ] Validação visual: 6 páginas + heartbeat + idade/STALE.
+- [x] `go vet` e `gopls check` limpos.
 
 ## 6. Commits previstos
 

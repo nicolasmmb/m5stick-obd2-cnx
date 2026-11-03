@@ -136,6 +136,7 @@ data/<sessão>/
 | Páginas 1–6 | ✅ confirmadas visualmente |
 | Replay 5–10 min sem OOM | ✅ |
 | UI durante conexão BLE | ✅ confirmado (sem trava) |
+| Snapshots da UI (P2) | ✅ implementado; ⏳ validação visual |
 | Dados salvos em `data/` | ✅ confirmado |
 | Sessão real de 5–10 min no carro | ✅ validado |
 | Reconexão BLE + beeps | ⏳ backlog P1 |
@@ -192,14 +193,16 @@ data/<sessão>/
 11. Validar VIN no carro. ⏳
 12. Validar reconexão, `X` e DTCs no hardware. ⏳
 
-Detalhes em [P1-ROBUSTNESS.md](P1-ROBUSTNESS.md). O P1 fica em backlog até
-priorizarmos a validação de reconexão, `C,STOP` e DTC/readiness no carro.
+Detalhes em [P1-ROBUSTNESS.md](P1-ROBUSTNESS.md) e roteiro de bancada em
+[P1-HARDWARE-CHECKLIST.md](P1-HARDWARE-CHECKLIST.md). O P1 fica em backlog
+até priorizarmos a validação de reconexão, `C,STOP` e DTC/readiness no carro.
 
 ### P2 — replay e dados (próximo)
 
 - ~~implementar `cmd/obd-replay` e modo REPLAY no firmware~~ ✅;
 - ~~testar gravações sem o carro~~ ✅;
-- migrar a UI para snapshots com qualidade/idade. ⏳
+- ~~migrar a UI para snapshots com qualidade/idade~~ ✅
+  (core + UI; validação visual pendente).
 
 Plano detalhado, orçamento de memória e validação:
 **[P2-SNAPSHOTS.md](P2-SNAPSHOTS.md)**.
@@ -266,6 +269,7 @@ firmware para o scan, encerra a conexão e não usa mais o adaptador até um nov
 
 - [README](../README.md)
 - [P1 — robustez](P1-ROBUSTNESS.md)
+- [P1 — checklist de hardware](P1-HARDWARE-CHECKLIST.md)
 - [P2 — snapshots](P2-SNAPSHOTS.md)
 - [Simulador serial](SERIAL-SIM.md)
 - [Plano de otimização](OPTIMIZATION-PLAN.md)
