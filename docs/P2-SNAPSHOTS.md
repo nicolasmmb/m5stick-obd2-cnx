@@ -131,7 +131,7 @@ Regras:
 
 | Item | Valor |
 |---|---|
-| Flash | 321.408 B (3,8% de 8 MB) |
+| Flash | 321.488 B (3,8% de 8 MB) |
 | RAM estática (`data` + `bss`) | 62.924 B (12,1% de 520 KB) |
 | Arena de heap (`HeapSys`) | 67.851 B |
 | Heap no boot | 25.952 B alocados / **41.899 B livres** |
@@ -163,8 +163,8 @@ Medido no build:
 | Versão | Flash | RAM estática | Heap livre (BLE) |
 |---|---|---|---|
 | antes do P2 | 318.832 | 59.804 | 26.064 |
-| P2 + `C,MEM` + pedal | **321.408** | **62.924** | **22.731** |
-| diferença | +2.576 | **+3.120** | **−3.333** |
+| P2 + `C,MEM` + pedal | **321.488** | **62.924** | **22.731** |
+| diferença | +2.656 | **+3.120** | **−3.333** |
 
 ### 3.3 Otimizações obrigatórias
 

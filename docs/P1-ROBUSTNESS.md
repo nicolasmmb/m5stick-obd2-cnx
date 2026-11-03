@@ -116,7 +116,7 @@ primeiro byte é a contagem, não um código. Respostas multi-frame
 - `tinygo build -target=m5stick-c -size short` ✅
   - antes: flash 302.356 / RAM 59.028
   - depois (P1): flash 307.844 / RAM 59.084
-  - com o simulador serial: flash 321.408 / RAM 62.924
+  - com o simulador serial: flash 321.488 / RAM 62.924
 - `gopls check` no firmware ✅
 
 A lógica de sessão agora roda no host contra um `Transport` fake

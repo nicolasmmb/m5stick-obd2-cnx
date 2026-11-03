@@ -389,6 +389,15 @@ func markPIDDirty(pid string) {
 			markTile(5, 1)
 			markTile(5, 2)
 		}
+	case 6:
+		switch pid {
+		case "49":
+			markTile(6, 0)
+		case "4A":
+			markTile(6, 1)
+		case "45":
+			markTile(6, 2)
+		}
 	}
 }
 
