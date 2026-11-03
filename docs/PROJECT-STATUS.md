@@ -137,11 +137,11 @@ data/<sessão>/
 | Replay 5–10 min sem OOM | ✅ |
 | UI durante conexão BLE | ✅ confirmado (sem trava) |
 | Dados salvos em `data/` | ✅ confirmado |
-| Reconexão BLE + beeps | ⏳ pendente de hardware |
+| Sessão real de 5–10 min no carro | ✅ validado |
+| Reconexão BLE + beeps | ⏳ backlog P1 |
 | `X` em `ble_lost`/`host` | ✅ testes de host; ⏳ hardware |
 | DTC/readiness | ✅ testes de host; ⏳ carro |
 | Simulação serial (`C,SIM`) | ✅ host + firmware compilando; ⏳ hardware |
-| Log real de 5–10 min no carro | ⏳ pendente |
 
 ## 5. Decisões tomadas
 
@@ -178,10 +178,12 @@ data/<sessão>/
 2. ~~Confirmar cores: WAIT laranja, OK verde, DISC vermelho.~~ ✅
 3. ~~Rodar `make log` e ver SERIAL=OK.~~ ✅
 4. ~~Fechar o loader e ver SERIAL=DISC após 3 s.~~ ✅
-5. Rodar uma sessão real de 5–10 min no carro. ⏳
-6. Conferir `raw.log`, `decoded.ndjson` e CSVs. ⏳ (dados de serial reais já conferidos)
+5. ~~Rodar uma sessão real de 5–10 min no carro.~~ ✅
+6. ~~Conferir `raw.log`, `decoded.ndjson` e CSVs.~~ ✅
 
-### P1 — robustez (implementado, falta hardware)
+**P0 concluído com o carro.**
+
+### P1 — backlog (implementado; validação de hardware pendente)
 
 7. ~~Detectar perda de BLE e reconectar.~~ ✅
 8. ~~Emitir `X` em shutdown/reconexão (`C,STOP`).~~ ✅
@@ -190,13 +192,17 @@ data/<sessão>/
 11. Validar VIN no carro. ⏳
 12. Validar reconexão, `X` e DTCs no hardware. ⏳
 
-Detalhes em [P1-ROBUSTNESS.md](P1-ROBUSTNESS.md).
+Detalhes em [P1-ROBUSTNESS.md](P1-ROBUSTNESS.md). O P1 fica em backlog até
+priorizarmos a validação de reconexão, `C,STOP` e DTC/readiness no carro.
 
-### P2 — replay e dados
+### P2 — replay e dados (próximo)
 
 - ~~implementar `cmd/obd-replay` e modo REPLAY no firmware~~ ✅;
 - ~~testar gravações sem o carro~~ ✅;
-- migrar a UI para snapshots com qualidade/idade.
+- migrar a UI para snapshots com qualidade/idade. ⏳
+
+Plano detalhado, orçamento de memória e validação:
+**[P2-SNAPSHOTS.md](P2-SNAPSHOTS.md)**.
 
 ### P3 — dados e ML
 
@@ -260,6 +266,7 @@ firmware para o scan, encerra a conexão e não usa mais o adaptador até um nov
 
 - [README](../README.md)
 - [P1 — robustez](P1-ROBUSTNESS.md)
+- [P2 — snapshots](P2-SNAPSHOTS.md)
 - [Simulador serial](SERIAL-SIM.md)
 - [Plano de otimização](OPTIMIZATION-PLAN.md)
 - [Formato do logger](OBD2-LOGGER-FORMAT.md)
@@ -274,6 +281,7 @@ firmware para o scan, encerra a conexão e não usa mais o adaptador até um nov
 ## 10. Estado do git
 
 A otimização e o replay estão mergeados na `main` (`d0da8ad`). O P1
-(reconexão, `X`/`C,STOP`, DTCs/readiness) está commitado na `main`. O
-simulador serial (`C,SIM`) está na branch `feat/serial-sim`. O P0-5 (sessão
-real de 5–10 min no carro) segue pendente.
+(reconexão, `X`/`C,STOP`, DTCs/readiness) está commitado na `main` e fica em
+backlog para validação de hardware. O simulador serial (`C,SIM`) e os fixes
+de UI/`NO DATA` estão na branch `feat/serial-sim`. O P0 (incluindo a sessão
+real no carro) está concluído.

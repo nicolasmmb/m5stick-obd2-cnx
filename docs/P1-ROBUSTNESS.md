@@ -1,6 +1,7 @@
 # P1 — robustez do modo live
 
-> Implementado sobre a `main` (P0 validado, exceto a sessão longa no carro).
+> Status: **implementado; validação de hardware em backlog**.
+> P0 concluído com o carro.
 > Escopo: reconexão BLE, encerramento explícito (`X`) e diagnóstico
 > (DTCs/readiness) no logger.
 
@@ -134,12 +135,12 @@ Validado em hardware:
 - a UI continua atualizando durante o `Connect` do BLE (sem pausa);
 - os dados continuam sendo gravados em `data/`.
 
-Pendente de hardware:
+Backlog de hardware (P1):
 
 - derrubar o adaptador e confirmar reconexão + beeps;
 - Ctrl-C e confirmar `BLE=OFF`;
 - carro com DTC/readiness para validar os códigos reais;
-- sessão longa de 5–10 min.
+- `seq`/`session_id` no protocolo.
 
 ## 5. Arquivos
 
