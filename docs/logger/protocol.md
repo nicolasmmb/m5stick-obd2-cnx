@@ -75,6 +75,7 @@ C,LIVE            volta ao modo live
 C,CLEAR           limpa o cache
 C,STOP            encerra o live, emite X,host e pausa o BLE
 C,SIM             entra no simulador serial (Q/S)
+C,MEM             responde M,mem,alloc=...,free=...,sys=...
 R,<registro>      injeta um registro no replay
 S,<resposta>      resposta ELM para o modo SIM
 ```

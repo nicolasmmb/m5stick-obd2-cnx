@@ -43,6 +43,7 @@ no modo live normal.
 |---|---|---|
 | host → Stick | `C,SIM` | entra no modo simulado |
 | host → Stick | `C,STOP` | encerra e emite `X,host` |
+| host → Stick | `C,MEM` | responde `M,mem,alloc=...,free=...` |
 | host → Stick | `A` | ACK de presença |
 | Stick → host | `Q,<cmd>` | comando ELM (`ATZ`, `010C`, `0902`...) |
 | host → Stick | `S,<resposta>` | resposta ELM (`410C1AF8AA||>`) |

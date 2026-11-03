@@ -99,6 +99,8 @@ monotônico desde o boot: reconectar **não** reinicia a linha do tempo.
 | `C,LIVE` | sai do replay/pausa e retoma o BLE |
 | `C,CLEAR` | limpa o cache |
 | `C,STOP` | emite `X,host` e pausa o BLE |
+| `C,SIM` | entra no simulador serial (`Q`/`S`) |
+| `C,MEM` | responde `M,mem,alloc=...,free=...` |
 | `R,<registro>` | injeta um registro no modo replay |
 
 ## Qualidade

@@ -116,6 +116,8 @@ func (s *SerialLink) handle(line obdline.Line) {
 		bleState = bleOff
 		elmState = elmWait
 		println("K,SIM")
+	case obdline.KindMem:
+		printMem("mem")
 	case obdline.KindClear:
 		resetReplayValues()
 	case obdline.KindRecord:
