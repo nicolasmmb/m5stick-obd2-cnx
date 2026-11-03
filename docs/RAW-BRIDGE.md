@@ -45,6 +45,7 @@ O M5 não interpreta `OK`, `NO DATA`, `>` nem PIDs.
 | `START,<seq>` | começa a gravar |
 | `STOP,<seq>` | para de gravar |
 | `BYE,<seq>` | encerra |
+| `C,MEM` | responde `M,<ms>,alloc=...,free=...,sys=...` |
 
 ### M5 → PC
 
@@ -112,6 +113,8 @@ go run ./cmd/obd-logger-v2 \
 | `--session` | reaproveita/append no diretório |
 | `--reset` | pulso de reset antes do handshake (padrão ligado) |
 | `--ble-timeout` | tempo máximo esperando `BLE=ON` (padrão 20 s) |
+| `--mem` | pede `C,MEM` no início/fim |
+| `--mem-every` | pede `C,MEM` periodicamente |
 | `--echo` | mostra serial cru |
 | `--verbose` | loga cada linha |
 

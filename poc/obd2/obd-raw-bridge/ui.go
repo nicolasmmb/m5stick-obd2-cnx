@@ -341,19 +341,21 @@ var (
 	lastBeat time.Time
 )
 
-func statusKey() string {
-	s, sl := serialStatus()
-	b, bl := bleStatus()
-	e, el := elmStatus()
-	return s + "|" + strconv.Itoa(sl) + "|" + b + "|" + strconv.Itoa(bl) + "|" + e + "|" + strconv.Itoa(el) + "|" + strconv.FormatUint(uint64(atomic.LoadUint32(&txCount)), 10)
+func statusKey() uint32 {
+	_, sl := serialStatus()
+	_, bl := bleStatus()
+	_, el := elmStatus()
+	return uint32(sl)<<16 | uint32(bl)<<8 | uint32(el)
 }
 
 func uiLoop() {
-	lastKey := ""
+	var lastKey uint32
+	first := true
 	for {
 		now := time.Now()
 		key := statusKey()
-		if key != lastKey || now.Sub(lastDraw) >= 200*time.Millisecond {
+		if first || key != lastKey || now.Sub(lastDraw) >= 500*time.Millisecond {
+			first = false
 			lastKey = key
 			lastDraw = now
 			drawAll()

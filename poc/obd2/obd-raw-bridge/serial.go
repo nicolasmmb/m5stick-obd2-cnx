@@ -115,6 +115,8 @@ func handleHostLine(line string) {
 		bleWant = false
 		closeBLE()
 		emit("BYE_ACK," + strings.TrimPrefix(line, "BYE,"))
+	case line == "C,MEM":
+		printMem()
 	case strings.HasPrefix(line, "C,"):
 		if !serialReady || bleState != bleOn {
 			emit("ERR," + strconv.FormatInt(nowMs(), 10) + ",CMD,NO_BLE")

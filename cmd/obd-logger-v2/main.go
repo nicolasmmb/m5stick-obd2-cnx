@@ -109,7 +109,7 @@ func (m *m5) readLoop() {
 
 func isKnownLine(line string) bool {
 	for _, prefix := range []string{
-		"S,", "Q,", "R,", "E,", "X,",
+		"S,", "Q,", "R,", "E,", "X,", "M,",
 		"HELLO_ACK,", "HB_ACK,", "START_ACK,", "STOP_ACK,", "BYE_ACK,", "ERR,",
 	} {
 		if strings.HasPrefix(line, prefix) {
@@ -253,6 +253,24 @@ func parseHexLine(line string) ([]byte, error) {
 	return hex.DecodeString(parts[2])
 }
 
+func (m *m5) mem() {
+	if err := m.send("C,MEM"); err != nil {
+		return
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		line, err := m.next(time.Until(deadline))
+		if err != nil {
+			return
+		}
+		m.note(line)
+		if strings.HasPrefix(line, "M,") {
+			log.Printf("MEM: %s", line)
+			return
+		}
+	}
+}
+
 func (m *m5) recover() error {
 	log.Printf("waiting BLE reconnect...")
 	if err := m.waitBLE(30 * time.Second); err != nil {
@@ -313,6 +331,8 @@ func main() {
 		timeout    = flag.Duration("timeout", 2*time.Second, "per-command timeout")
 		echo       = flag.Bool("echo", false, "echo raw serial bytes")
 		verbose    = flag.Bool("verbose", false, "print every line")
+		mem        = flag.Bool("mem", false, "request C,MEM at start/end")
+		memEvery   = flag.Duration("mem-every", 0, "request C,MEM periodically")
 		reset      = flag.Bool("reset", true, "pulse reset before handshake")
 		bleTimeout = flag.Duration("ble-timeout", 20*time.Second, "wait for BLE=ON")
 	)
@@ -419,6 +439,10 @@ func main() {
 		log.Fatalf("START: %v", err)
 	}
 	log.Printf("recording started")
+	if *mem {
+		m.mem()
+	}
+	lastMem := time.Now()
 	meta := map[string]any{
 		"session_id": sid,
 		"started_at": time.Now().Format(time.RFC3339Nano),
@@ -438,6 +462,10 @@ func main() {
 		case <-ctx.Done():
 			goto done
 		default:
+		}
+		if *memEvery > 0 && time.Since(lastMem) >= *memEvery {
+			m.mem()
+			lastMem = time.Now()
 		}
 		cmd := makeCommand(group)
 		rawResp, latency, err := m.command(cmd, *timeout)
@@ -473,6 +501,9 @@ func main() {
 	}
 
 done:
+	if *mem {
+		m.mem()
+	}
 	_ = m.stop()
 	m.bye()
 	_, _ = rawBuf.WriteString("# SESSION_END " + sid + "\n")
